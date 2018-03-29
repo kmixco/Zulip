@@ -44,6 +44,10 @@ set_global('notifications', {
     clear_compose_notifications: noop,
 });
 
+set_global('locking', {
+    is_topic_locked: function () { return false; },
+});
+
 // Setting these up so that we can test that links to uploads within messages are
 // automatically converted to server relative links.
 global.document.location.protocol = 'https:';
@@ -224,6 +228,31 @@ people.add(bob);
     $("#subject").select(noop);
     assert(!compose.validate());
     assert.equal($('#compose-error-msg').html(), i18n.t('Please specify a topic'));
+
+    global.with_overrides(function (override) {
+        global.with_stub(function (stub) {
+            override('locking.is_topic_locked', stub.f);
+            compose_state.subject('Denmark3');
+            $("#subject").select(noop);
+            var sub = {
+                stream_id: 101,
+                name: 'Denmark',
+                subscribed: true,
+            };
+            stream_data.add_sub('Denmark', sub);
+            assert(!compose.validate());
+            assert.equal($('#compose-error-msg').html(), i18n.t('The topic is locked.'));
+            var args = stub.get_args('stream', 'topic');
+            var valid_args = {
+                stream: 101,
+                topic: 'Denmark3',
+            };
+            assert.deepEqual(args, valid_args);
+        });
+    });
+    set_global('locking', {
+        is_topic_locked: function () { return false; },
+    });
 }());
 
 (function test_get_invalid_recipient_emails() {

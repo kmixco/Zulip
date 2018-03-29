@@ -128,6 +128,11 @@ var event_fixtures = {
         hotspots: ['nice', 'chicken'],
     },
 
+    locked_topics: {
+        type: 'locked_topics',
+        locked_topics: [[1, 'js'], [2, 'burritos']],
+    },
+
     muted_topics: {
         type: 'muted_topics',
         muted_topics: [['devel', 'js'], ['lunch', 'burritos']],
@@ -515,6 +520,18 @@ with_overrides(function (override) {
     override('hotspots.load_new', noop);
     dispatch(event);
     assert_same(page_params.hotspots, event.hotspots);
+});
+
+with_overrides(function (override) {
+    // locked_topics
+    var event = event_fixtures.locked_topics;
+
+    global.with_stub(function (stub) {
+        override('locking_ui.handle_updates', stub.f);
+        dispatch(event);
+        var args = stub.get_args('locked_topics');
+        assert_same(args.locked_topics, event.locked_topics);
+    });
 });
 
 with_overrides(function (override) {

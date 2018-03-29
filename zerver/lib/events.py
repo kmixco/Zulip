@@ -30,6 +30,7 @@ from zerver.lib.soft_deactivation import maybe_catch_up_soft_deactivated_user
 from zerver.lib.realm_icon import realm_icon_url
 from zerver.lib.request import JsonableError
 from zerver.lib.topic_mutes import get_topic_mutes
+from zerver.lib.locked_topics import get_locked_topics
 from zerver.lib.actions import (
     validate_user_access_to_subscribers_helper,
     do_get_streams, get_default_streams_for_realm,
@@ -39,6 +40,7 @@ from zerver.lib.actions import (
     get_owned_bot_dicts,
 )
 from zerver.lib.user_groups import user_groups_in_realm_serialized
+from zerver.lib.stream_subscription import get_stream_subscriptions_for_user
 from zerver.tornado.event_queue import request_event_queue, get_user_events
 from zerver.models import Client, Message, Realm, UserPresence, UserProfile, CustomProfileFieldValue, \
     get_user_profile_by_id, \
@@ -47,7 +49,6 @@ from zerver.models import Client, Message, Realm, UserPresence, UserProfile, Cus
     get_default_stream_groups
 from zproject.backends import email_auth_enabled, password_auth_enabled
 from version import ZULIP_VERSION
-
 
 def get_raw_user_data(realm_id: int, client_gravatar: bool) -> Dict[int, Dict[str, Text]]:
     user_dicts = get_realm_user_dicts(realm_id)
@@ -143,6 +144,13 @@ def fetch_initial_state_data(user_profile: UserProfile,
 
     if want('muted_topics'):
         state['muted_topics'] = get_topic_mutes(user_profile)
+
+    if want('locked_topics'):
+        locked_topics = get_locked_topics()
+        subscriptions = get_stream_subscriptions_for_user(user_profile)
+        subscriptions = list(map(lambda stream: stream.recipient.type_id, subscriptions))
+        locked_topics = list(filter(lambda topic: topic['stream_id'] in subscriptions, locked_topics))
+        state['locked_topics'] = locked_topics
 
     if want('pointer'):
         state['pointer'] = user_profile.pointer
@@ -582,6 +590,12 @@ def apply_event(state: Dict[str, Any],
         state['alert_words'] = event['alert_words']
     elif event['type'] == "muted_topics":
         state['muted_topics'] = event["muted_topics"]
+    elif event['type'] == "locked_topics":
+        subscriptions = get_stream_subscriptions_for_user(user_profile)
+        subscriptions = list(map(lambda stream: stream.recipient.type_id, subscriptions))
+        locked_topics = list(filter(lambda topic: topic['stream_id'] in subscriptions,
+                                    event['locked_topics']))
+        state['locked_topics'] = locked_topics
     elif event['type'] == "realm_filters":
         state['realm_filters'] = event["realm_filters"]
     elif event['type'] == "update_display_settings":

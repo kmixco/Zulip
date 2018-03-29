@@ -49,6 +49,7 @@ from zerver.lib.actions import (
     do_deactivate_stream,
     do_deactivate_user,
     do_delete_message,
+    do_lock_topic,
     do_mark_hotspot_as_read,
     do_mute_topic,
     do_reactivate_user,
@@ -69,6 +70,7 @@ from zerver.lib.actions import (
     do_set_user_display_setting,
     do_set_realm_notifications_stream,
     do_set_realm_signup_notifications_stream,
+    do_unlock_topic,
     do_unmute_topic,
     do_update_embedded_data,
     do_update_message,
@@ -1174,6 +1176,30 @@ class EventsRegisterTest(ZulipTestCase):
             self.user_profile, stream, "topic"))
         error = muted_topics_checker('events[0]', events[0])
         self.assert_on_error(error)
+
+    def test_locked_topics_events(self) -> None:
+        locked_topics_checker = self.check_events_dict([
+            ('type', equals('locked_topics')),
+            ('locked_topics', check_list(check_dict_only([
+                ('stream_id', check_int),
+                ('topic', check_string)
+            ]))),
+        ])
+        subscribedStream = get_stream('Denmark', self.user_profile.realm)
+        unsubscribedStream = get_stream('Scotland', self.user_profile.realm)
+        events = self.do_test(lambda: do_lock_topic(
+            self.user_profile, subscribedStream, "topic"))
+        error = locked_topics_checker('events[0]', events[0])
+        self.assert_on_error(error)
+
+        events = self.do_test(lambda: do_unlock_topic(
+            self.user_profile, subscribedStream, "topic"))
+        error = locked_topics_checker('events[0]', events[0])
+        self.assert_on_error(error)
+
+        events = self.do_test(lambda: do_lock_topic(
+            self.user_profile, unsubscribedStream, "topic"),
+            state_change_expected=False)
 
     def test_change_avatar_fields(self) -> None:
         schema_checker = self.check_events_dict([
@@ -2758,7 +2784,7 @@ class FetchQueriesTest(ZulipTestCase):
                     client_gravatar=False,
                 )
 
-        self.assert_length(queries, 30)
+        self.assert_length(queries, 34)
 
         expected_counts = dict(
             alert_words=0,
@@ -2767,6 +2793,7 @@ class FetchQueriesTest(ZulipTestCase):
             default_streams=1,
             default_stream_groups=1,
             hotspots=0,
+            locked_topics=4,
             message=1,
             muted_topics=1,
             pointer=0,
