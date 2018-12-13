@@ -2000,6 +2000,32 @@ class UserSignUpTest(ZulipTestCase):
         # Verify that the user is asked for name and password
         self.assert_in_success_response(['id_password', 'id_full_name'], result)
 
+    def test_signup_name_in_use(self) -> None:
+        """
+        Check if signup with a name that is already in use for realm is handled properly.
+        """
+        email = "newguy@zulip.com"
+        password = "newpassword"
+
+        result = self.client_post('/accounts/home/', {'email': email})
+        self.assertEqual(result.status_code, 302)
+        self.assertTrue(result["Location"].endswith(
+            "/accounts/send_confirm/%s" % (email,)))
+        result = self.client_get(result["Location"])
+        self.assert_in_response("Check your email so we can get started.", result)
+
+        # Visit the confirmation link.
+        confirmation_url = self.get_confirmation_url_from_outbox(email)
+        result = self.client_get(confirmation_url)
+        self.assertEqual(result.status_code, 200)
+
+        # Pick a password and agree to the ToS.
+        result = self.submit_reg_form_for_user(email, password, full_name="Iago")
+        self.assert_in_success_response(["name has already been taken."], result)
+
+        # Verify that the user is asked for name and password
+        self.assert_in_success_response(['id_password', 'id_full_name'], result)
+
     def test_signup_without_password(self) -> None:
         """
         Check if signing up without a password works properly when
