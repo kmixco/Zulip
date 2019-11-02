@@ -760,6 +760,7 @@ run_test('sent_by_me_suggestions', () => {
     expected = [
         "sent",
         "sender:bob@zulip.com",
+        "sender:",
     ];
     assert.deepEqual(suggestions.strings, expected);
 
@@ -768,6 +769,7 @@ run_test('sent_by_me_suggestions', () => {
     expected = [
         "-sent",
         "-sender:bob@zulip.com",
+        "-sender:",
     ];
     assert.deepEqual(suggestions.strings, expected);
 
@@ -777,6 +779,7 @@ run_test('sent_by_me_suggestions', () => {
     expected = [
         "sent",
         "sender:bob@zulip.com",
+        "sender:",
     ];
     assert.deepEqual(suggestions.strings, expected);
 
