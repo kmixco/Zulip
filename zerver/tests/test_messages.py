@@ -3357,12 +3357,27 @@ class MessageAccessTests(ZulipTestCase):
                                    "flag": "mentioned"})
         self.assert_json_error(result, "Flag not editable: 'mentioned'")
 
-    def change_star(self, messages: List[int], add: bool=True, **kwargs: Any) -> HttpResponse:
-        return self.client_post("/json/messages/flags",
-                                {"messages": ujson.dumps(messages),
-                                 "op": "add" if add else "remove",
-                                 "flag": "starred"},
-                                **kwargs)
+    def change_star(self, messages: List[int], add: bool=True, bot_email: str=None,
+                    **kwargs: Any) -> HttpResponse:
+        if bot_email is None:
+            return self.client_post("/json/messages/flags",
+                                    {"messages": ujson.dumps(messages),
+                                     "op": "add" if add else "remove",
+                                     "flag": "starred"},
+                                    **kwargs)
+        return self.api_post(bot_email,
+                             "/json/messages/flags",
+                             {"messages": ujson.dumps(messages),
+                              "op": "add" if add else "remove",
+                              "flag": "starred"})
+
+    def add_hello_reaction(self, email: str, message_id: int) -> HttpResponse:
+        return self.api_post(email, '/api/v1/messages/{}/reactions'.format(message_id),
+                             {'emoji_name': 'smile'})
+
+    def update_message_content(self, email: str, message_id: int, content: str) -> HttpResponse:
+        return self.api_patch(email, '/api/v1/messages/{}'.format(message_id),
+                              {'content': content})
 
     def test_change_star(self) -> None:
         """
@@ -3399,7 +3414,6 @@ class MessageAccessTests(ZulipTestCase):
         """
         stream_name = "new_stream"
         self.subscribe(self.example_user("hamlet"), stream_name)
-        self.login(self.example_email("hamlet"))
         message_ids = [
             self.send_stream_message(self.example_email("hamlet"), stream_name, "test"),
         ]
@@ -3415,8 +3429,6 @@ class MessageAccessTests(ZulipTestCase):
             ),
         ]
 
-        # Now login as another user who wasn't on that stream
-        self.login(self.example_email("cordelia"))
         # Send a message to yourself to make sure we have at least one with the read flag
         sent_message_ids = [
             self.send_personal_message(
@@ -3425,10 +3437,12 @@ class MessageAccessTests(ZulipTestCase):
                 "test_read_message",
             ),
         ]
+        self.login(self.example_email("cordelia"))
         result = self.client_post("/json/messages/flags",
                                   {"messages": ujson.dumps(sent_message_ids),
                                    "op": "add",
                                    "flag": "read"})
+        self.assert_json_success(result)
 
         # We can't change flags other than "starred" on historical messages:
         result = self.client_post("/json/messages/flags",
@@ -3467,7 +3481,6 @@ class MessageAccessTests(ZulipTestCase):
         You can set a message as starred/un-starred through
         POST /json/messages/flags.
         """
-        self.login(self.example_email("hamlet"))
         message_ids = [
             self.send_personal_message(
                 self.example_email("hamlet"),
@@ -3485,11 +3498,11 @@ class MessageAccessTests(ZulipTestCase):
         stream_name = "private_stream"
         self.make_stream(stream_name, invite_only=True)
         self.subscribe(self.example_user("hamlet"), stream_name)
-        self.login(self.example_email("hamlet"))
         message_ids = [
             self.send_stream_message(self.example_email("hamlet"), stream_name, "test"),
         ]
 
+        self.login(self.example_email("hamlet"))
         # Starring private stream messages you received works
         result = self.change_star(message_ids)
         self.assert_json_success(result)
@@ -3503,7 +3516,6 @@ class MessageAccessTests(ZulipTestCase):
         self.make_stream(stream_name, invite_only=True,
                          history_public_to_subscribers=True)
         self.subscribe(self.example_user("hamlet"), stream_name)
-        self.login(self.example_email("hamlet"))
         message_ids = [
             self.send_stream_message(self.example_email("hamlet"), stream_name, "test"),
         ]
@@ -3511,7 +3523,6 @@ class MessageAccessTests(ZulipTestCase):
         # With stream.history_public_to_subscribers = True, you still
         # can't see it if you didn't receive the message and are
         # not subscribed.
-        self.login(self.example_email("cordelia"))
         result = self.change_star(message_ids)
         self.assert_json_error(result, 'Invalid message(s)')
 
@@ -3525,7 +3536,6 @@ class MessageAccessTests(ZulipTestCase):
         New messages aren't starred.
         """
         test_email = self.example_email('hamlet')
-        self.login(test_email)
         content = "Test message for star"
         self.send_stream_message(test_email, "Verona",
                                  content=content)
@@ -3542,7 +3552,6 @@ class MessageAccessTests(ZulipTestCase):
         stream_name = "public_stream"
         self.make_stream(stream_name)
         self.subscribe(normal_user, stream_name)
-        self.login(normal_user.email)
 
         message_id = [
             self.send_stream_message(normal_user.email, stream_name, "test 1")
@@ -3559,11 +3568,9 @@ class MessageAccessTests(ZulipTestCase):
         self.assert_json_success(result)
 
         # And messages sent after they join
-        self.login(normal_user.email)
         message_id = [
             self.send_stream_message(normal_user.email, stream_name, "test 2")
         ]
-        self.login(guest_user.email)
         result = self.change_star(message_id)
         self.assert_json_success(result)
 
@@ -3573,7 +3580,6 @@ class MessageAccessTests(ZulipTestCase):
         stream_name = "private_stream"
         stream = self.make_stream(stream_name, invite_only=True)
         self.subscribe(normal_user, stream_name)
-        self.login(normal_user.email)
 
         message_id = [
             self.send_stream_message(normal_user.email, stream_name, "test 1")
@@ -3598,17 +3604,60 @@ class MessageAccessTests(ZulipTestCase):
 
         # With history not public to subscribers, they can still see new messages
         do_change_stream_invite_only(stream, True, history_public_to_subscribers=False)
-        self.login(normal_user.email)
         message_id = [
             self.send_stream_message(normal_user.email, stream_name, "test 2")
         ]
-        self.login(guest_user.email)
         result = self.change_star(message_id)
         self.assert_json_success(result)
 
+    def test_bot_access_to_send_messages_in_private_streams(self) -> None:
+        hamlet = self.example_user("hamlet")
+        cordelia = self.example_user("cordelia")
+        stream_name = "private_stream"
+        stream = self.make_stream(stream_name, invite_only=True)
+        self.subscribe(hamlet, stream_name)
+        self.subscribe(cordelia, stream_name)
+
+        foo_bot = self.create_test_bot("foo", cordelia)
+        self.logout()
+        bot_email = foo_bot.email
+
+        message_id_sent_by_hamlet = self.send_stream_message(hamlet.email, stream_name, "test 1")
+        # Bot can send messages to streams in which it's owner is a member.
+        message_id_sent_by_bot = self.send_stream_message(bot_email, stream_name, "test 1")
+
+        result = self.change_star([message_id_sent_by_hamlet], bot_email=bot_email)
+        self.assert_json_error(result, 'Invalid message(s)')
+        result = self.add_hello_reaction(bot_email, message_id_sent_by_hamlet)
+        self.assert_json_error(result, 'Invalid message(s)')
+        result = self.update_message_content(bot_email, message_id_sent_by_hamlet, "New content")
+        self.assert_json_error(result, 'Invalid message(s)')
+
+        result = self.change_star([message_id_sent_by_bot], bot_email=bot_email)
+        self.assert_json_success(result)
+        result = self.add_hello_reaction(bot_email, message_id_sent_by_bot)
+        self.assert_json_success(result)
+        result = self.update_message_content(bot_email, message_id_sent_by_bot, "New content")
+        self.assert_json_success(result)
+
+        self.subscribe(foo_bot, stream_name)
+        result = self.change_star([message_id_sent_by_hamlet], bot_email=bot_email)
+        self.assert_json_error(result, 'Invalid message(s)')
+        result = self.add_hello_reaction(bot_email, message_id_sent_by_hamlet)
+        self.assert_json_error(result, 'Invalid message(s)')
+        result = self.update_message_content(bot_email, message_id_sent_by_hamlet, "New content")
+        self.assert_json_error(result, 'Invalid message(s)')
+
+        do_change_stream_invite_only(stream, True, history_public_to_subscribers=True)
+        result = self.change_star([message_id_sent_by_hamlet], bot_email=bot_email)
+        self.assert_json_success(result)
+        result = self.add_hello_reaction(bot_email, message_id_sent_by_hamlet)
+        self.assert_json_success(result)
+        result = self.update_message_content(bot_email, message_id_sent_by_hamlet, "New content")
+        self.assert_json_error(result, "You don't have permission to edit this message")
+
     def test_bulk_access_messages_private_stream(self) -> None:
         user = self.example_user("hamlet")
-        self.login(user.email)
 
         stream_name = "private_stream"
         stream = self.make_stream(stream_name, invite_only=True,
@@ -3655,7 +3704,6 @@ class MessageAccessTests(ZulipTestCase):
 
     def test_bulk_access_messages_public_stream(self) -> None:
         user = self.example_user("hamlet")
-        self.login(user.email)
 
         # Testing messages accessiblity including a public stream message
         stream_name = "public_stream"
@@ -4027,6 +4075,15 @@ class CheckMessageTest(ZulipTestCase):
         self.assertEqual(test_bot.last_reminder, None)
 
 class DeleteMessageTest(ZulipTestCase):
+    def update_message_deletion_settings(self, allow_message_deleting: bool,
+                                         message_content_delete_limit_seconds: int) -> None:
+        self.login("iago@zulip.com")
+        result = self.client_patch("/json/realm", {
+            'allow_message_deleting': ujson.dumps(allow_message_deleting),
+            'message_content_delete_limit_seconds': message_content_delete_limit_seconds
+        })
+        self.assert_json_success(result)
+
     def test_delete_message_invalid_request_format(self) -> None:
         self.login("iago@zulip.com")
         msg_id = self.send_stream_message("hamlet@zulip.com", "Scotland")
@@ -4037,15 +4094,6 @@ class DeleteMessageTest(ZulipTestCase):
         self.assert_json_success(result)
 
     def test_delete_message_by_user(self) -> None:
-        def set_message_deleting_params(allow_message_deleting: bool,
-                                        message_content_delete_limit_seconds: int) -> None:
-            self.login("iago@zulip.com")
-            result = self.client_patch("/json/realm", {
-                'allow_message_deleting': ujson.dumps(allow_message_deleting),
-                'message_content_delete_limit_seconds': message_content_delete_limit_seconds
-            })
-            self.assert_json_success(result)
-
         def test_delete_message_by_admin(msg_id: int) -> HttpResponse:
             self.login("iago@zulip.com")
             result = self.client_delete('/json/messages/{msg_id}'.format(msg_id=msg_id))
@@ -4062,8 +4110,7 @@ class DeleteMessageTest(ZulipTestCase):
             return result
 
         # Test if message deleting is not allowed(default).
-        set_message_deleting_params(False, 0)
-        self.login("hamlet@zulip.com")
+        self.update_message_deletion_settings(False, 0)
         msg_id = self.send_stream_message("hamlet@zulip.com", "Scotland")
 
         result = test_delete_message_by_owner(msg_id=msg_id)
@@ -4077,7 +4124,7 @@ class DeleteMessageTest(ZulipTestCase):
 
         # Test if message deleting is allowed.
         # Test if time limit is zero(no limit).
-        set_message_deleting_params(True, 0)
+        self.update_message_deletion_settings(True, 0)
         msg_id = self.send_stream_message("hamlet@zulip.com", "Scotland")
         message = Message.objects.get(id=msg_id)
         message.date_sent = message.date_sent - datetime.timedelta(seconds=600)
@@ -4090,7 +4137,7 @@ class DeleteMessageTest(ZulipTestCase):
         self.assert_json_success(result)
 
         # Test if time limit is non-zero.
-        set_message_deleting_params(True, 240)
+        self.update_message_deletion_settings(True, 240)
         msg_id_1 = self.send_stream_message("hamlet@zulip.com", "Scotland")
         message = Message.objects.get(id=msg_id_1)
         message.date_sent = message.date_sent - datetime.timedelta(seconds=120)
@@ -4131,6 +4178,37 @@ class DeleteMessageTest(ZulipTestCase):
             m.side_effect = Message.DoesNotExist()
             result = test_delete_message_by_owner(msg_id=msg_id)
             self.assert_json_error(result, "Message already deleted")
+
+    def test_delete_message_by_bot(self) -> None:
+        cordelia = self.example_user("cordelia")
+        hamlet = self.example_user("hamlet")
+        bot = self.create_test_bot("foo", cordelia)
+
+        stream_name = "private_stream"
+        self.make_stream(stream_name, invite_only=True)
+        self.subscribe(cordelia, stream_name)
+        self.subscribe(hamlet, stream_name)
+
+        hamlet_msg_id = self.send_stream_message(hamlet.email, stream_name)
+        bot_msg_id = self.send_stream_message(bot.email, stream_name)
+
+        self.update_message_deletion_settings(False, 0)
+        self.logout()
+
+        result = self.api_delete(bot.email, '/json/messages/{0}'.format(hamlet_msg_id))
+        self.assert_json_error(result, "Invalid message(s)")
+
+        result = self.api_delete(bot.email, "/json/messages/{0}".format(bot_msg_id))
+        self.assert_json_error(result, "You don't have permission to delete this message")
+
+        self.update_message_deletion_settings(True, 3330)
+        self.logout()
+
+        result = self.api_delete(bot.email, '/json/messages/{0}'.format(hamlet_msg_id))
+        self.assert_json_error(result, "Invalid message(s)")
+
+        result = self.api_delete(bot.email, '/json/messages/{0}'.format(bot_msg_id))
+        self.assert_json_success(result)
 
 class SoftDeactivationMessageTest(ZulipTestCase):
 
