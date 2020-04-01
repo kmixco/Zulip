@@ -964,18 +964,22 @@ class InlineInterestingLinkProcessor(markdown.treeprocessors.Treeprocessor):
             bugdown_logger.warning(traceback.format_exc())
             return None
 
-    def get_url_data(self, e: Element) -> Optional[Tuple[str, str]]:
+    def get_url_data(self, e: Element) -> Optional[Tuple[str, str, str]]:
         if e.tag == "a":
+            img_title = e.get('data-img-title', '')
+            e.attrib.pop('data-img-title', '')  # Don't let data-img-title leak into the final message
             if e.text is not None:
-                return (e.get("href"), e.text)
-            return (e.get("href"), e.get("href"))
+                return (e.get("href"), e.text, img_title)
+            return (e.get("href"), e.get("href"), img_title)
         return None
 
     def handle_image_inlining(self, root: Element, found_url: ResultWithFamily) -> None:
         grandparent = found_url.family.grandparent
         parent = found_url.family.parent
         ahref_element = found_url.family.child
-        (url, text) = found_url.result
+        (url, text, img_title) = found_url.result
+        if not text:
+            text = img_title
         actual_url = self.get_actual_image_url(url)
 
         # url != text usually implies a named link, which we opt not to remove
@@ -1050,8 +1054,7 @@ class InlineInterestingLinkProcessor(markdown.treeprocessors.Treeprocessor):
         unique_urls = {found_url.result[0] for found_url in found_urls}
         # Collect unique URLs which are not quoted as we don't do
         # inline previews for links inside blockquotes.
-        unique_previewable_urls = {found_url.result[0] for found_url in found_urls
-                                   if not found_url.family.in_blockquote}
+        unique_previewable_urls = {found_url.result[0] for found_url in found_urls}
 
         # Set has_link and similar flags whenever a message is processed by bugdown
         if self.markdown.zulip_message:
@@ -1087,17 +1090,24 @@ class InlineInterestingLinkProcessor(markdown.treeprocessors.Treeprocessor):
         rendered_tweet_count = 0
 
         for found_url in found_urls:
-            (url, text) = found_url.result
+            (url, text, img_title) = found_url.result
 
             if url in unique_previewable_urls and url not in processed_urls:
                 processed_urls.add(url)
             else:
                 continue
 
-            if not self.is_absolute_url(url):
+            if not img_title == '':
+                # we are coming from inline image syntax, render a preview even for incorrect urls.
+                self.handle_image_inlining(root, found_url)
+                continue
+            elif not self.is_absolute_url(url):
                 if self.is_image(url):
                     self.handle_image_inlining(root, found_url)
                 # We don't have a strong use case for doing url preview for relative links.
+                continue
+
+            if found_url.family.in_blockquote:
                 continue
 
             dropbox_image = self.dropbox_image(url)
@@ -1119,7 +1129,7 @@ class InlineInterestingLinkProcessor(markdown.treeprocessors.Treeprocessor):
                 if image_source is not None:
                     found_url = ResultWithFamily(
                         family=found_url.family,
-                        result=(image_source, image_source)
+                        result=(image_source, image_source, '')
                     )
                 self.handle_image_inlining(root, found_url)
                 continue
@@ -1769,6 +1779,8 @@ class AlertWordsNotificationProcessor(markdown.preprocessors.Preprocessor):
         return lines
 
 class LinkInlineProcessor(markdown.inlinepatterns.LinkInlineProcessor):
+    IS_LINK = True
+
     def zulip_specific_link_changes(self, el: Element) -> Union[None, Element]:
         href = el.get('href')
 
@@ -1789,10 +1801,17 @@ class LinkInlineProcessor(markdown.inlinepatterns.LinkInlineProcessor):
         if not el.text.strip():
             el.text = href
 
+        # Inline images;
+        # Hide text from link, but keep it in title so our image-inlining logic shows the title.
+        if not self.IS_LINK:
+            el.set('data-img-title', el.text)
+            el.set('title', el.text)
+            el.text = ''
+
         # Prevent realm_filters from running on the content of a Markdown link, breaking up the link.
-        # This is a monkey-patch, but it might be worth sending a version of this change upstream.
-        if not isinstance(el, str):
-            el.text = markdown.util.AtomicString(el.text)
+        # We should find out some other way to deal with the above, current solution disables any
+        # further parsing inside links. Example: [**hello** world](google.com) doesn't trigger 'strong'.
+        el.text = markdown.util.AtomicString(el.text)
 
         return el
 
@@ -1801,6 +1820,9 @@ class LinkInlineProcessor(markdown.inlinepatterns.LinkInlineProcessor):
         if el is not None:
             el = self.zulip_specific_link_changes(el)
         return el, match_start, index
+
+class ImageInlineProcessor(LinkInlineProcessor):
+    IS_LINK = False
 
 def get_sub_registry(r: markdown.util.Registry, keys: List[str]) -> markdown.util.Registry:
     # Registry is a new class added by py-markdown to replace Ordered List.
@@ -1928,6 +1950,7 @@ class Bugdown(markdown.Markdown):
         reg.register(Avatar(GRAVATAR_REGEX, self), 'gravatar', 70)
         reg.register(UserGroupMentionPattern(mention.user_group_mentions, self), 'usergroupmention', 65)
         reg.register(LinkInlineProcessor(markdown.inlinepatterns.LINK_RE, self), 'link', 60)
+        reg.register(ImageInlineProcessor(markdown.inlinepatterns.IMAGE_LINK_RE, self), 'image_link', 58)
         reg.register(AutoLink(get_web_link_regex(), self), 'autolink', 55)
         # Reserve priority 45-54 for Realm Filters
         reg = self.register_realm_filters(reg)
