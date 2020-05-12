@@ -3,6 +3,9 @@ const render_bot_avatar_row = require('../templates/bot_avatar_row.hbs');
 const render_edit_bot = require('../templates/edit_bot.hbs');
 const render_settings_edit_embedded_bot_service = require("../templates/settings/edit_embedded_bot_service.hbs");
 const render_settings_edit_outgoing_webhook_service = require("../templates/settings/edit_outgoing_webhook_service.hbs");
+const render_settings_edit_incoming_webhook_url = require("../templates/settings/edit_incoming_webhook_url.hbs");
+const webhooks_data = require('../generated/webhooks_data.json');
+const util = require("./util");
 
 exports.hide_errors = function () {
     $('#bot_table_error').hide();
@@ -14,7 +17,7 @@ const focus_tab = {
         $("#bots_lists_navbar .active").removeClass("active");
         $("#bots_lists_navbar .add-a-new-bot-tab").addClass("active");
         $("#add-a-new-bot-form").show();
-        $("#active_bots_list").hide();
+        $("#active_bots_list_holder").hide();
         $("#inactive_bots_list").hide();
         exports.hide_errors();
     },
@@ -22,7 +25,7 @@ const focus_tab = {
         $("#bots_lists_navbar .active").removeClass("active");
         $("#bots_lists_navbar .active-bots-tab").addClass("active");
         $("#add-a-new-bot-form").hide();
-        $("#active_bots_list").show();
+        $("#active_bots_list_holder").show();
         $("#inactive_bots_list").hide();
         exports.hide_errors();
     },
@@ -30,7 +33,7 @@ const focus_tab = {
         $("#bots_lists_navbar .active").removeClass("active");
         $("#bots_lists_navbar .inactive-bots-tab").addClass("active");
         $("#add-a-new-bot-form").hide();
-        $("#active_bots_list").hide();
+        $("#active_bots_list_holder").hide();
         $("#inactive_bots_list").show();
         exports.hide_errors();
     },
@@ -99,15 +102,15 @@ exports.render_bots = function () {
 
     if ($("#bots_lists_navbar .add-a-new-bot-tab").hasClass("active")) {
         $("#add-a-new-bot-form").show();
-        $("#active_bots_list").hide();
+        $("#active_bots_list_holder").hide();
         $("#inactive_bots_list").hide();
     } else if ($("#bots_lists_navbar .active-bots-tab").hasClass("active")) {
         $("#add-a-new-bot-form").hide();
-        $("#active_bots_list").show();
+        $("#active_bots_list_holder").show();
         $("#inactive_bots_list").hide();
     } else {
         $("#add-a-new-bot-form").hide();
-        $("#active_bots_list").hide();
+        $("#active_bots_list_holder").hide();
         $("#inactive_bots_list").show();
     }
 };
@@ -203,7 +206,87 @@ exports.update_bot_permissions_ui = function () {
     }
 };
 
-exports.set_up = function () {
+exports.set_up_incoming_webhook_url_form = function () {
+    const streams = stream_data.get_streams_for_settings_page();
+    const stream_selector = `#incoming_webhook_stream_widget`;
+    const webhook_name_options = {
+        setting_name: 'incoming_webhook_name',
+        data: Object.keys(webhooks_data).sort().map(k => {
+            return {
+                name: webhooks_data[k].display_name,
+                value: k,
+            };
+        }),
+        default_text: i18n.t("None"),
+        null_value: '',
+        value: '',
+        on_update: (value) => {
+            if (value === '') {
+                $(stream_selector).hide();
+            } else {
+                $(stream_selector).show();
+            }
+        },
+    };
+
+    const stream_options = {
+        setting_name: 'incoming_webhook_stream',
+        data: streams.map(x => {
+            const item = {
+                name: x.name,
+                value: x.stream_id.toString(),
+            };
+            return item;
+        }),
+        default_text: i18n.t("None"),
+        render_text: (x) => {return `#${x}`;},
+        null_value: '',
+        value: '',
+        on_update: () => {},
+    };
+
+    $("#incoming_webhook_url_maker").append(render_settings_edit_incoming_webhook_url());
+    const name_widget = settings_list_widget(webhook_name_options);
+    const stream_widget = settings_list_widget(stream_options);
+
+    $(stream_selector).hide();
+    $("#incoming_webhook_url_maker").hide();
+
+    new ClipboardJS('#copy_webhook_url', {
+        text: function (trigger) {
+            const webhook_info = $(trigger).closest('#bot_table_url').find('code').expectOne();
+            return webhook_info.text();
+        },
+    });
+
+    $('.top-row .close_url').on('click', () => {
+        $('#bot_table_url').hide();
+    });
+
+    const get_url_data = () => {
+        return {
+            name: name_widget.value(),
+            stream: stream_widget.value(),
+        };
+    };
+    return { get_url_data, name_widget };
+};
+
+exports.show_webhook_url = (opts) => {
+    if (!opts.api_key || !opts.name) {
+        return;
+    }
+    let url = util.get_absolute_url();
+    url = `${url}api/v1/external/${opts.name}?api_key=${opts.api_key}`;
+    if (opts.stream) {
+        const stream_name = stream_data.get_sub_by_id(parseInt(opts.stream, 10)).name;
+        url += `&stream=${encodeURIComponent(stream_name)}`;
+    }
+    $('#bot_table_url #url').text(url);
+    $('#bot_table_url').show();
+};
+
+exports.set_up = function (additional_data) {
     $('#payload_url_inputbox').hide();
     $('#create_payload_url').val('');
     $('#service_name_list').hide();
@@ -237,11 +320,14 @@ exports.set_up = function () {
 
 
     const create_avatar_widget = avatar.build_bot_create_widget();
-    const OUTGOING_WEBHOOK_BOT_TYPE = '3';
     const GENERIC_BOT_TYPE = '1';
+    const INCOMING_WEBHOOK_BOT_TYPE = '2';
+    const OUTGOING_WEBHOOK_BOT_TYPE = '3';
     const EMBEDDED_BOT_TYPE = '4';
 
     const GENERIC_INTERFACE = '1';
+
+    const { get_url_data, name_widget } = exports.set_up_incoming_webhook_url_form();
 
     $('#create_bot_form').validate({
         errorClass: 'text-error',
@@ -285,7 +371,11 @@ exports.set_up = function () {
                 cache: false,
                 processData: false,
                 contentType: false,
-                success: function () {
+                success: function (data) {
+                    exports.show_webhook_url({
+                        api_key: data.api_key,
+                        ...get_url_data(),
+                    });
                     exports.hide_errors();
                     $('#create_bot_name').val('');
                     $('#create_bot_short_name').val('');
@@ -320,6 +410,7 @@ exports.set_up = function () {
         $('#service_name_list').hide();
         $('#select_service_name').removeClass('required');
         $('#config_inputbox').hide();
+        $('#incoming_webhook_url_maker').hide();
 
         $('#payload_url_inputbox').hide();
         $('#create_payload_url').removeClass('required');
@@ -332,6 +423,8 @@ exports.set_up = function () {
             $('#select_service_name').addClass('required');
             $("#select_service_name").trigger('change');
             $('#config_inputbox').show();
+        } else if (bot_type === INCOMING_WEBHOOK_BOT_TYPE) {
+            $('#incoming_webhook_url_maker').show();
         }
     });
 
@@ -525,6 +618,19 @@ exports.set_up = function () {
         e.stopPropagation();
         focus_tab.inactive_bots_tab();
     });
+
+    // Process initial state of the widget.
+    if (additional_data && additional_data.length > 1 && additional_data[0] === 'create') {
+        const webhook_name = additional_data[1];
+        if (Object.keys(webhooks_data).includes(webhook_name)) {
+            // Directly launch the add new bot tab.
+            if (exports.can_create_new_bots()) {
+                focus_tab.add_a_new_bot_tab();
+                name_widget.update(webhook_name);
+                $("#create_bot_type").val(INCOMING_WEBHOOK_BOT_TYPE).trigger('change');
+            }
+        }
+    }
 
 };
 

@@ -1,3 +1,5 @@
+const util = require("./util");
+
 exports.get_hash_category = function (hash) {
     // given "#streams/subscribed", returns "streams"
     return hash ? hash.replace(/^#/, "").split(/\//)[0] : "";
@@ -13,6 +15,16 @@ exports.get_hash_section = function (hash) {
     const parts = hash.replace(/\/$/, "").split(/\//);
 
     return parts[1] || '';
+};
+
+exports.get_remaining_sections = (hash) => {
+    // given '#streams/5/social/hello", returns ["social", "hello"]
+    if (!hash) {
+        return [];
+    }
+
+    const parts = hash.replace(/\/$/, "").split(/\//);
+    return parts.slice(2);
 };
 
 // Some browsers zealously URI-decode the contents of
@@ -128,9 +140,7 @@ exports.huddle_with_uri = function (user_ids_string) {
 };
 
 exports.by_conversation_and_time_uri = function (message) {
-    const absolute_url = window.location.protocol + "//" +
-        window.location.host + "/" +
-        window.location.pathname.split('/')[1];
+    const absolute_url = util.get_absolute_url();
 
     const suffix = "/near/" + exports.encodeHashComponent(message.id);
 
