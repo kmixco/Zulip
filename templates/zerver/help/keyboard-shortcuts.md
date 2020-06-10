@@ -172,10 +172,10 @@ Keyboard navigation (e.g. arrow keys) works as expected.
 * **Switch between tabs**: `←` and `→` — Switch between the
 **Subscribed** and **All streams** tabs.
 
-* **Create new stream**: `n`
+* **Create new stream**: `Ctrl + shift + s`
 
 ### For a selected stream
 
 * **View stream messages**: `V`
 
-* **Toggle subscription**: `S`
+* **Toggle subscription**: `T`
