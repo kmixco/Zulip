@@ -7,7 +7,6 @@
 #
 # For details, see requirements/README.md .
 #
---no-binary psycopg2
 
 alabaster==0.7.12 \
     --hash=sha256:446438bdcca0e05bd45ea2de1668c1d9b032e1a9154c2c259092d77031ddd359 \
