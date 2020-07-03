@@ -32,11 +32,6 @@
     overflow-wrap: break-word;
 }
 
-#subscriptions_table .subscription_block {
-    padding-left: 0.5em;
-    vertical-align: middle;
-}
-
 .subscription-info-container {
     display: inline-block;
     /* subtract out the width of the subscribe button and arrow. */
@@ -591,16 +586,6 @@ form#add_new_subscription {
         margin-bottom: 20px;
     }
 
-    #make-invite-only {
-        .radio {
-            margin: 5px;
-        }
-
-        .grey-box .checkbox {
-            margin: 5px;
-        }
-    }
-
     #announce-new-stream {
         margin-top: 10px;
 
@@ -775,13 +760,6 @@ form#add_new_subscription {
     }
 }
 
-#subscription_overlay .stream-description .stream-description-editable:empty::after,
-.stream-row .sub-info-box .description:empty::after {
-    content: attr(data-no-description);
-    font-style: italic;
-    color: hsl(0, 0%, 67%);
-}
-
 #subscription_overlay {
     #stream-creation {
         max-height: calc(100% - 102px);
@@ -847,29 +825,25 @@ form#add_new_subscription {
             white-space: nowrap;
             max-width: 260px;
 
-            .stream-name-editable {
+            .sub-stream-name {
                 display: block;
                 max-width: 20ch;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 float: left;
             }
-
-            .stream-name-edit-box {
-                text-overflow: clip;
-                border-style: groove;
-            }
-        }
-
-        .deactivate,
-        .subscribe-button {
-            float: right;
-            margin-top: -5px;
-            margin-right: 5px;
         }
 
         .button-group {
             float: right;
+            margin-top: -5px;
+
+            .subscribe-button,
+            #preview-stream-button,
+            .deactivate {
+                margin-right: 5px;
+                text-decoration: none;
+            }
         }
 
         .subscribe-button.unsubscribed {
@@ -896,58 +870,6 @@ form#add_new_subscription {
     .stream-description {
         font-size: 0.9em;
         margin-bottom: 5px;
-    }
-
-    #preview-stream-button {
-        float: right;
-        margin-top: -5px;
-        margin-right: 5px;
-        text-decoration: none;
-    }
-
-    .editable-section {
-        position: relative;
-        display: inline;
-        min-width: 10px;
-        max-width: 100%;
-
-        &[contenteditable=true] {
-            display: inline-block;
-            vertical-align: top;
-            color: hsl(170, 48%, 54%);
-
-            &:focus {
-                outline: none;
-            }
-        }
-    }
-
-    .editable {
-        position: relative;
-        top: -1px;
-        margin-left: 5px;
-        color: hsl(0, 0%, 67%);
-        cursor: pointer;
-        font-size: 1.4rem;
-        font-weight: 300;
-
-        transition: all 0.3s ease;
-
-        &:empty::before {
-            content: "\f040";
-            font-family: "FontAwesome";
-            font-size: 0.8rem;
-            font-weight: normal;
-        }
-
-        &:not(:empty) {
-            position: relative;
-            top: 2px;
-        }
-
-        &:hover {
-            color: hsl(0, 0%, 27%);
-        }
     }
 
     .checkmark {
@@ -1019,62 +941,66 @@ form#add_new_subscription {
     }
 }
 
-ul.grey-box {
-    #stream_privacy_modal & {
-        border-style: none;
-    }
-
+#subscription_overlay ul.grey-box {
     li {
-        #stream_privacy_modal &,
-        #subscription_overlay & {
-            border-bottom: 1px solid hsl(0, 0%, 87%);
-            padding: 5px 0px;
-        }
+        border-bottom: 1px solid hsl(0, 0%, 87%);
+        padding: 5px 0px;
 
         input[type=checkbox] {
-            #stream_privacy_modal & {
-                margin-top: 4px;
-            }
-
-            #subscription_overlay & {
-                margin-top: 0px;
-            }
+            margin-top: 0px;
         }
 
         &:last-of-type {
-            #stream_privacy_modal &,
-            #subscription_overlay & {
-                border-bottom: none;
-            }
+            border-bottom: none;
         }
 
         .sp-replacer {
-            #stream_privacy_modal &,
-            #subscription_overlay & {
-                box-shadow: none;
-            }
+            box-shadow: none;
         }
 
         input[type=radio] {
-            #stream_privacy_modal &,
-            #subscription_overlay & {
-                margin-right: 5px;
+            margin-right: 5px;
+        }
+    }
+}
+
+#stream_privacy_modal,
+.stream-creation-body {
+    .input-group {
+
+        margin-bottom: 10px;
+
+        .radio-input-parent {
+            padding: 5px 0;
+
+            input[type="radio"] {
+                margin: 0 0 1px 0;
+            }
+
+            label.radio {
+                display: inline;
+                padding-left: 8px;
             }
         }
 
-        input[type=text] {
-            width: 5ch;
-            text-align: right;
-        }
+        &.message-retention-setting-group {
+            input {
+                width: 5ch;
+                text-align: right;
+            }
 
-        label.dropdown-title {
-            display: block;
+            select {
+                width: auto;
+                margin-bottom: 0px;
+            }
         }
-
-        select {
-            width: auto;
-            margin-bottom: 0px;
-        }
+    }
+}
+#change_stream_info_modal {
+    #change_stream_description {
+        width: 80%;
+        max-width: 500px;
+        box-sizing: border-box;
     }
 }
 
