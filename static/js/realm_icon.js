@@ -1,10 +1,6 @@
 "use strict";
 
-exports.build_realm_icon_widget = function (upload_function) {
-    const get_file_input = function () {
-        return $("#realm-icon-upload-widget .image_file_input").expectOne();
-    };
-
+exports.build_realm_icon_widget = function () {
     if (!page_params.is_admin) {
         return;
     }
@@ -21,11 +17,9 @@ exports.build_realm_icon_widget = function (upload_function) {
         });
     });
 
-    return upload_widget.build_direct_upload_widget(
-        get_file_input,
-        $("#realm-icon-upload-widget .image_file_input_error").expectOne(),
-        $("#realm-icon-upload-widget .image_upload_button").expectOne(),
-        upload_function,
+    return image_upload_widget.build_direct_upload_widget(
+        "#realm-icon-upload-widget",
+        "/json/realm/icon",
         page_params.max_icon_file_size,
     );
 };

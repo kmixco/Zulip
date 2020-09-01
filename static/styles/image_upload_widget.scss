@@ -85,6 +85,10 @@
         display: block;
     }
 
+    .image_file_input_error {
+        position: absolute;
+    }
+
     &:hover {
         .image-delete-button {
             opacity: 1;
@@ -153,10 +157,8 @@
 #user-avatar-source {
     font-size: 1em;
     z-index: 99;
-    a {
-        position: relative;
-        top: 10px;
-    }
+    position: relative;
+    top: 12px;
 }
 
 /* SCSS related to settings page realm icon upload widget only */
@@ -165,6 +167,7 @@
     height: 100px;
     border-radius: 5px;
     box-shadow: 0 0 10px hsla(0, 0%, 0%, 0.1);
+    margin-bottom: 10px;
 
     .image-delete-text {
         top: 40px;
@@ -181,6 +184,12 @@
         height: 40px;
         top: 30%;
         right: 30%;
+    }
+
+    .image_file_input_error {
+        height: 30px;
+        width: 200px;
+        display: block;
     }
 }
 
