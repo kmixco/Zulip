@@ -43,6 +43,7 @@ from zerver.lib.actions import (
     do_set_user_display_setting,
     lookup_default_stream_groups,
 )
+from zerver.lib.avatar import get_gravatar_url
 from zerver.lib.create_user import get_role_for_new_user
 from zerver.lib.email_validation import email_allowed_for_realm, validate_email_not_already_in_realm
 from zerver.lib.onboarding import send_initial_realm_messages, setup_realm_internal_bots
@@ -76,6 +77,7 @@ from zerver.views.auth import (
     redirect_and_log_into_subdomain,
     redirect_to_deactivation_notice,
 )
+from zerver.views.user_settings import set_avatar_backend
 from zproject.backends import (
     ExternalAuthResult,
     ZulipLDAPAuthBackend,
@@ -169,6 +171,19 @@ def accounts_register(request: HttpRequest) -> HttpResponse:
     name_validated = False
     full_name = None
     require_ldap_password = False
+    user_avatar_url = ''
+    avatar_source = UserProfile.AVATAR_FROM_GRAVATAR
+    user_gravatar_url = get_gravatar_url(prereg_user.email, 1, True)
+    if prereg_user.user_avatar_url:
+        user_avatar_url = prereg_user.user_avatar_url
+        # If the key use_social_avatar isn't present on the request, we set the default
+        # as 'on' because to be here, the user authenticated using Github. So, as soon
+        # as they are redirected from confirmation, their Github avatar should be
+        # displayed and thus 'use_social_avatar' is 'on'.
+        use_social_avatar = request.POST.get('use_social_avatar', default='on')
+
+        if use_social_avatar == 'on' or request.FILES:
+            avatar_source = UserProfile.AVATAR_FROM_USER
 
     if request.POST.get('from_confirmation'):
         try:
@@ -244,6 +259,7 @@ def accounts_register(request: HttpRequest) -> HttpResponse:
             else:
                 form = RegistrationForm(initial={'full_name': prereg_user.full_name},
                                         realm_creation=realm_creation)
+
         elif 'full_name' in request.POST:
             form = RegistrationForm(
                 initial={'full_name': request.POST.get('full_name')},
@@ -251,6 +267,7 @@ def accounts_register(request: HttpRequest) -> HttpResponse:
             )
         else:
             form = RegistrationForm(realm_creation=realm_creation)
+
     else:
         postdata = request.POST.copy()
         if name_changes_disabled(realm):
@@ -374,15 +391,19 @@ def accounts_register(request: HttpRequest) -> HttpResponse:
 
         if user_profile is None:
             user_profile = do_create_user(email, password, realm, full_name,
+                                          user_avatar_url=user_avatar_url,
                                           prereg_user=prereg_user,
                                           role=role,
                                           tos_version=settings.TOS_VERSION,
                                           timezone=timezone,
+                                          avatar_source=avatar_source,
                                           newsletter_data={"IP": request.META['REMOTE_ADDR']},
                                           default_stream_groups=default_stream_groups,
                                           source_profile=source_profile,
                                           realm_creation=realm_creation,
                                           acting_user=None)
+            if request.FILES:
+                set_avatar_backend(request, user_profile)
 
         if realm_creation:
             bulk_add_subscriptions([realm.signup_notifications_stream], [user_profile])
@@ -416,6 +437,8 @@ def accounts_register(request: HttpRequest) -> HttpResponse:
         context={'form': form,
                  'email': email,
                  'key': key,
+                 'user_avatar_url': prereg_user.user_avatar_url,
+                 'user_gravatar_url': user_gravatar_url,
                  'full_name': request.session.get('authenticated_full_name', None),
                  'lock_name': name_validated and name_changes_disabled(realm),
                  # password_auth_enabled is normally set via our context processor,
