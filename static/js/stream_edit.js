@@ -114,7 +114,7 @@ function set_stream_message_retention_setting_dropdown(stream) {
         value = "forever";
     }
 
-    $(".stream_message_retention_setting").val(value);
+    $("#stream_creation_form select[name=stream_message_retention_setting]").val(value);
     change_stream_message_retention_days_block_display_property(value);
 }
 
@@ -479,7 +479,21 @@ exports.set_stream_property = function (sub, property, value, status_element) {
     exports.bulk_set_stream_property([sub_data], status_element);
 };
 
-function get_message_retention_days_from_sub(sub) {
+exports.save_discard_widget_status_handler = (e) => {
+    const name = $(e.target).attr("name");
+    const stream_id = $(e.target).closest("#stream_privacy_modal").data("stream-id");
+    const sub = stream_data.get_sub_by_id(stream_id);
+    const subsection = $("#stream_privacy_modal").find("." + name);
+    subsection.find(".subsection-failed-status p").hide();
+    subsection.find(".save-button").show();
+
+    const data = get_changed_property_data(name, sub);
+    const button_state = Object.keys(data).length === 0 ? "discarded" : "unsaved";
+    const save_btn_controls = subsection.find(".save-button-controls");
+    settings_org.change_save_button_state(save_btn_controls, button_state);
+};
+
+exports.get_message_retention_days_from_sub = function (sub) {
     if (sub.message_retention_days === null) {
         return "realm_default";
     }
@@ -487,25 +501,24 @@ function get_message_retention_days_from_sub(sub) {
         return "forever";
     }
     return sub.message_retention_days;
+};
+
+function get_changed_property_data(name, sub) {
+    if (name === "privacy") {
+        return change_stream_privacy(sub);
+    } else if (name === "stream-post-policy") {
+        return change_stream_post_policy(sub);
+    } else if (
+        name === "stream_message_retention_setting" ||
+        name === "stream-message-retention-days" ||
+        name === "stream-message-retention"
+    ) {
+        return change_stream_message_retention(sub);
+    }
 }
 
-function change_stream_privacy(e) {
-    e.stopPropagation();
-
-    const stream_id = $(e.target).data("stream-id");
-    const sub = stream_data.get_sub_by_id(stream_id);
-    const data = {};
-
+function change_stream_privacy(sub) {
     const privacy_setting = $("#stream_privacy_modal input[name=privacy]:checked").val();
-    const stream_post_policy = parseInt(
-        $("#stream_privacy_modal input[name=stream-post-policy]:checked").val(),
-        10,
-    );
-
-    if (sub.stream_post_policy !== stream_post_policy) {
-        data.stream_post_policy = JSON.stringify(stream_post_policy);
-    }
-
     let invite_only;
     let history_public_to_subscribers;
 
@@ -520,6 +533,7 @@ function change_stream_privacy(e) {
         history_public_to_subscribers = true;
     }
 
+    const data = {};
     if (
         sub.invite_only !== invite_only ||
         sub.history_public_to_subscribers !== history_public_to_subscribers
@@ -527,7 +541,23 @@ function change_stream_privacy(e) {
         data.is_private = JSON.stringify(invite_only);
         data.history_public_to_subscribers = JSON.stringify(history_public_to_subscribers);
     }
+    return data;
+}
 
+function change_stream_post_policy(sub) {
+    const stream_post_policy = parseInt(
+        $("#stream_privacy_modal input[name=stream-post-policy]:checked").val(),
+        10,
+    );
+
+    const data = {};
+    if (sub.stream_post_policy !== stream_post_policy) {
+        data.stream_post_policy = JSON.stringify(stream_post_policy);
+    }
+    return data;
+}
+
+function change_stream_message_retention(sub) {
     let message_retention_days = $(
         "#stream_privacy_modal select[name=stream_message_retention_setting]",
     ).val();
@@ -538,32 +568,20 @@ function change_stream_privacy(e) {
         );
     }
 
-    const message_retention_days_from_sub = get_message_retention_days_from_sub(sub);
-
+    const data = {};
+    const message_retention_days_from_sub = exports.get_message_retention_days_from_sub(sub);
     if (message_retention_days_from_sub !== message_retention_days) {
         data.message_retention_days = JSON.stringify(message_retention_days);
     }
+    return data;
+}
 
+function change_stream_permissions(e, data) {
+    const stream_id = $(e.target).closest("#stream_privacy_modal").data("stream-id");
     $(".stream_change_property_info").hide();
 
-    if (Object.keys(data).length === 0) {
-        overlays.close_modal("#stream_privacy_modal");
-        $("#stream_privacy_modal").remove();
-        return;
-    }
-
-    channel.patch({
-        url: "/json/streams/" + stream_id,
-        data,
-        success() {
-            overlays.close_modal("#stream_privacy_modal");
-            $("#stream_privacy_modal").remove();
-            // The rest will be done by update stream event we will get.
-        },
-        error() {
-            $("#change-stream-privacy-button").text(i18n.t("Try again"));
-        },
-    });
+    const save_button = $(e.currentTarget);
+    settings_ui.save_subsection_settings("/json/streams/" + stream_id, data, save_button);
 }
 
 exports.change_stream_name = function (e) {
@@ -694,6 +712,7 @@ exports.initialize = function () {
             realm_message_retention_setting: exports.get_display_text_for_realm_message_retention_setting(),
             upgrade_text_for_wide_organization_logo:
                 page_params.upgrade_text_for_wide_organization_logo,
+            is_disabled: !stream.can_change_stream_permissions,
             is_stream_edit: true,
         };
         const change_privacy_modal = render_subscription_stream_privacy_modal(template_data);
@@ -705,7 +724,67 @@ exports.initialize = function () {
         e.stopPropagation();
     });
 
-    $("#subscriptions_table").on("click", "#change-stream-privacy-button", change_stream_privacy);
+    $("#subscriptions_table").on(
+        "click",
+        ".subsection-header .subsection-changes-save .button",
+        (e) => {
+            e.stopPropagation();
+            const stream_id = $(e.target).closest("#stream_privacy_modal").data("stream-id");
+            const sub = stream_data.get_sub_by_id(stream_id);
+            const subsection = $(e.target).closest(".org-subsection-parent");
+            const subsection_name = subsection
+                .find(".save-button")
+                .attr("id")
+                .replace("org-submit-", "");
+
+            const data = get_changed_property_data(subsection_name, sub);
+            change_stream_permissions(e, data);
+        },
+    );
+
+    $("#subscriptions_table").on(
+        "click",
+        ".subsection-header .subsection-changes-discard .button",
+        (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const stream_id = $(".stream-row.active").data("stream-id");
+            const sub = stream_data.get_sub_by_id(stream_id);
+            const subsection = $(e.target).closest(".org-subsection-parent");
+            const subsection_name = subsection
+                .find(".save-button")
+                .attr("id")
+                .replace("org-submit-", "");
+
+            if (subsection_name === "privacy") {
+                stream_ui_updates.update_policy_ui("privacy", sub);
+            } else if (subsection_name === "stream-post-policy") {
+                stream_ui_updates.update_policy_ui("stream-post-policy", sub);
+            } else if (subsection_name === "stream-message-retention") {
+                stream_ui_updates.update_stream_message_retention_ui(sub);
+            }
+
+            const save_btn_controls = $(e.target).closest(".save-button-controls");
+            settings_org.change_save_button_state(save_btn_controls, "discarded");
+        },
+    );
+
+    $("#subscriptions_table").on("change", ".prop-element", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (e.target.id === "id_stream_message_retention_setting") {
+            const message_retention_setting_dropdown_value = e.target.value;
+            if (
+                message_retention_setting_dropdown_value === "retain_for_period" &&
+                $(e.target).attr("name") === "stream_message_retention_setting"
+            ) {
+                // Dont submit on this change as number of days have not been entered yet.
+                return;
+            }
+        }
+
+        exports.save_discard_widget_status_handler(e);
+    });
 
     $("#subscriptions_table").on("click", ".close-privacy-modal", (e) => {
         // Re-enable background mouse events when we close the modal
