@@ -37,7 +37,12 @@ from zerver.lib.test_helpers import (
 )
 from zerver.lib.topic_mutes import add_topic_mute
 from zerver.lib.upload import upload_avatar_image
-from zerver.lib.users import access_user_by_id, get_accounts_for_email, user_ids_to_users
+from zerver.lib.users import (
+    access_user_by_email,
+    access_user_by_id,
+    get_accounts_for_email,
+    user_ids_to_users,
+)
 from zerver.models import (
     CustomProfileField,
     InvalidFakeEmailDomain,
@@ -398,6 +403,33 @@ class PermissionTest(ZulipTestCase):
         # But does have read-only access to it.
         access_user_by_id(self.example_user("cordelia"), self.example_user("aaron").id,
                           read_only=True)
+
+    def test_access_user_by_email(self) -> None:
+        iago = self.example_user("iago")
+
+        # Must be a valid user ID in the realm
+        with self.assertRaises(JsonableError):
+            access_user_by_email(iago, self.mit_user("sipbtest").email)
+
+        # Can only access bot users if allow_deactivated is passed
+        bot = self.example_user("default_bot")
+        access_user_by_email(iago, bot.email, allow_bots=True)
+        with self.assertRaises(JsonableError):
+            access_user_by_email(iago, bot.email)
+
+        # Can only access deactivated users if allow_deactivated is passed
+        hamlet = self.example_user("hamlet")
+        do_deactivate_user(hamlet)
+        with self.assertRaises(JsonableError):
+            access_user_by_email(iago, hamlet.email)
+        access_user_by_email(iago, hamlet.email, allow_deactivated=True)
+
+        # Non-admin user can't admin another user
+        with self.assertRaises(JsonableError):
+            access_user_by_email(self.example_user("cordelia"), self.example_user("aaron").email)
+        # But does have read-only access to it.
+        access_user_by_email(self.example_user("cordelia"), self.example_user("aaron").email,
+                             read_only=True)
 
     def test_change_regular_member_to_guest(self) -> None:
         iago = self.example_user("iago")
@@ -1616,54 +1648,81 @@ class GetProfileTest(ZulipTestCase):
         hamlet = self.example_user('hamlet')
         iago = self.example_user('iago')
         desdemona = self.example_user('desdemona')
+        bot = self.example_user("default_bot")
 
         self.login('hamlet')
-        result = orjson.loads(self.client_get('/json/users/me').content)
-        self.assertEqual(result['email'], hamlet.email)
-        self.assertEqual(result['full_name'], 'King Hamlet')
-        self.assertIn("user_id", result)
-        self.assertFalse(result['is_bot'])
-        self.assertFalse(result['is_admin'])
-        self.assertFalse(result['is_owner'])
-        self.assertFalse(result['is_guest'])
-        self.assertFalse('delivery_email' in result)
+        result = self.client_get('/json/users/me')
+        self.assert_json_success(result)
+        result_dict = result.json()
+        self.assertEqual(result_dict['email'], hamlet.email)
+        self.assertEqual(result_dict['full_name'], 'King Hamlet')
+        self.assertIn("user_id", result_dict)
+        self.assertFalse(result_dict['is_bot'])
+        self.assertFalse(result_dict['is_admin'])
+        self.assertFalse(result_dict['is_owner'])
+        self.assertFalse(result_dict['is_guest'])
+        self.assertFalse('delivery_email' in result_dict)
+
         self.login('iago')
-        result = orjson.loads(self.client_get('/json/users/me').content)
-        self.assertEqual(result['email'], iago.email)
-        self.assertEqual(result['full_name'], 'Iago')
-        self.assertFalse(result['is_bot'])
-        self.assertTrue(result['is_admin'])
-        self.assertFalse(result['is_owner'])
-        self.assertFalse(result['is_guest'])
+        result = self.client_get('/json/users/me')
+        self.assert_json_success(result)
+        result_dict = result.json()
+        self.assertEqual(result_dict['email'], iago.email)
+        self.assertEqual(result_dict['full_name'], 'Iago')
+        self.assertFalse(result_dict['is_bot'])
+        self.assertTrue(result_dict['is_admin'])
+        self.assertFalse(result_dict['is_owner'])
+        self.assertFalse(result_dict['is_guest'])
+
         self.login('desdemona')
-        result = orjson.loads(self.client_get('/json/users/me').content)
-        self.assertEqual(result['email'], desdemona.email)
-        self.assertFalse(result['is_bot'])
-        self.assertTrue(result['is_admin'])
-        self.assertTrue(result['is_owner'])
-        self.assertFalse(result['is_guest'])
+        result = self.client_get('/json/users/me')
+        self.assert_json_success(result)
+        result_dict = result.json()
+        self.assertEqual(result_dict['email'], desdemona.email)
+        self.assertFalse(result_dict['is_bot'])
+        self.assertTrue(result_dict['is_admin'])
+        self.assertTrue(result_dict['is_owner'])
+        self.assertFalse(result_dict['is_guest'])
 
         # Tests the GET ../users/{id} api endpoint.
-        user = self.example_user('hamlet')
-        result = orjson.loads(self.client_get(f'/json/users/{user.id}').content)
-        self.assertEqual(result['user']['email'], user.email)
-        self.assertEqual(result['user']['full_name'], user.full_name)
-        self.assertIn("user_id", result['user'])
-        self.assertNotIn("profile_data", result['user'])
-        self.assertFalse(result['user']['is_bot'])
-        self.assertFalse(result['user']['is_admin'])
-        self.assertFalse(result['user']['is_owner'])
+        result = self.client_get(f'/json/users/{hamlet.id}')
+        self.assert_json_success(result)
+        hamlet_dict = result.json()['user']
+        self.assertEqual(hamlet_dict['email'], hamlet.email)
+        self.assertEqual(hamlet_dict['full_name'], hamlet.full_name)
+        self.assertIn("user_id", hamlet_dict)
+        self.assertNotIn("profile_data", hamlet_dict)
+        self.assertFalse(hamlet_dict['is_bot'])
+        self.assertFalse(hamlet_dict['is_admin'])
+        self.assertFalse(hamlet_dict['is_owner'])
 
-        result = orjson.loads(self.client_get(f'/json/users/{user.id}?include_custom_profile_fields=true').content)
+        result = self.client_get(f'/json/users/{hamlet.id}?include_custom_profile_fields=true')
+        self.assert_json_success(result)
 
-        self.assertIn('profile_data', result['user'])
+        self.assertIn('profile_data', result.json()['user'])
         result = self.client_get(f'/json/users/{30}?')
         self.assert_json_error(result, "No such user")
 
-        bot = self.example_user("default_bot")
-        result = orjson.loads(self.client_get(f'/json/users/{bot.id}').content)
-        self.assertEqual(result['user']['email'], bot.email)
-        self.assertTrue(result['user']['is_bot'])
+        result = self.client_get(f'/json/users/{bot.id}')
+        bot_dict = result.json()['user']
+        self.assertEqual(bot_dict['email'], bot.email)
+        self.assertTrue(bot_dict['is_bot'])
+
+        # Tests the GET /users/{email} api endpoint.
+        result = self.client_get(f'/json/users/{hamlet.email}')
+        self.assert_json_success(result)
+        self.assertEqual(hamlet_dict, result.json()['user'])
+
+        result = self.client_get(f'/json/users/{hamlet.email}?include_custom_profile_fields=true')
+        self.assert_json_success(result)
+        self.assertIn('profile_data', result.json()['user'])
+
+        result = self.client_get('/json/users/nonexistence@zulip.com')
+        self.assert_json_error(result, "No such user")
+
+        result = self.client_get(f'/json/users/{bot.email}')
+        self.assert_json_success(result)
+        self.assertEqual(result.json()['user'], bot_dict)
 
     def test_get_all_profiles_avatar_urls(self) -> None:
         hamlet = self.example_user('hamlet')
