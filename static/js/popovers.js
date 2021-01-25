@@ -523,6 +523,11 @@ exports.toggle_actions_popover = function (element, id) {
             .replace(/\(/g, "%28")
             .replace(/\)/g, "%29");
 
+        var should_display_code_block = false
+        if (message.content !== undefined) {
+            should_display_code_block = message.content.includes("<code>")
+        }            
+
         const should_display_delete_option = message_edit.get_deletability(message);
         const args = {
             message_id: message.id,
@@ -543,6 +548,7 @@ exports.toggle_actions_popover = function (element, id) {
             should_display_reminder_option: feature_flags.reminders_in_message_action_menu,
             should_display_edit_and_view_source,
             should_display_quote_and_reply,
+            should_display_code_block,
         };
 
         const ypos = elt.offset().top;
@@ -1238,6 +1244,31 @@ exports.register_click_handlers = function () {
             // We unfocus this so keyboard shortcuts, etc., will work again.
             $(":focus").trigger("blur");
         }, 0);
+
+        e.stopPropagation();
+        e.preventDefault();
+    });
+
+    new ClipboardJS(".view_lightbox");
+
+    $("body").on("click", ".view_lightbox", (e) => {
+        exports.hide_actions_popover();
+
+        const message_id = $(e.currentTarget).data("message-id");
+        const row = current_msg_list.get_row(message_id);
+        const message = current_msg_list.get(rows.id(row));
+
+        let code_str = "";
+        let code_start = message.content.indexOf('<div class="codehilite"><pre>');
+        let code_end = 0;
+        const myWindow = window.open("", "_blank", "");
+
+        while (code_start !== -1) {
+            code_end = message.content.indexOf("</pre></div>", code_start) + 11;
+            code_str = message.content.slice(code_start, code_end);
+            code_start = message.content.indexOf('<div class="codehilite"><pre>', code_end);
+            myWindow.document.write(code_str);
+        }
 
         e.stopPropagation();
         e.preventDefault();
