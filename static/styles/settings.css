@@ -1303,6 +1303,10 @@ input[type="checkbox"] {
                 border-bottom: 1px solid transparent;
             }
 
+            &:focus {
+                outline: 1px dotted;
+                outline: -webkit-focus-ring-color auto 5px;
+            }
             .text,
             .icon,
             .locked {
