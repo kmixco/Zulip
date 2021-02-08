@@ -434,6 +434,10 @@ ROOT_DOMAIN_URI = EXTERNAL_URI_SCHEME + EXTERNAL_HOST
 S3_KEY = get_secret("s3_key")
 S3_SECRET_KEY = get_secret("s3_secret_key")
 
+if DEVELOPMENT:
+    S3_AUTH_UPLOADS_BUCKET = get_secret("s3_auth_uploads_bucket", "")
+    S3_AVATAR_BUCKET = get_secret("s3_avatar_bucket", "")
+
 if LOCAL_UPLOADS_DIR is not None:
     if SENDFILE_BACKEND is None:
         SENDFILE_BACKEND = 'django_sendfile.backends.nginx'
@@ -553,6 +557,12 @@ LOCALE_PATHS = (os.path.join(DEPLOY_ROOT, 'locale'),)
 
 # We want all temporary uploaded files to be stored on disk.
 FILE_UPLOAD_MAX_MEMORY_SIZE = 0
+
+FILE_UPLOAD_HANDLERS = [
+    'zerver.lib.uploadhandlers.ZulipUserFileUploadHandler',
+    'django.core.files.uploadhandler.MemoryFileUploadHandler',
+    'django.core.files.uploadhandler.TemporaryFileUploadHandler'
+]
 
 STATICFILES_DIRS = ['static/']
 

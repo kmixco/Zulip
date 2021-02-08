@@ -199,10 +199,15 @@ def resize_emoji(image_data: bytes, size: int=DEFAULT_EMOJI_SIZE) -> bytes:
     except DecompressionBombError:
         raise BadImageError(_("Image size exceeds limit."))
 
+def is_file_upload_request(request: HttpRequest) -> bool:
+    return request.path in set(['/json/user_uploads', '/api/v1/user_uploads'])
 
 ### Common
 
 class ZulipUploadBackend:
+    def get_target_file_path(self, file_name: str, realm: Realm) -> str:
+        raise NotImplementedError()
+
     def upload_message_file(self, uploaded_file_name: str, uploaded_file_size: int,
                             content_type: Optional[str], file_data: bytes,
                             user_profile: UserProfile,
@@ -276,6 +281,11 @@ def get_bucket(bucket_name: str, session: Optional[Session]=None) -> ServiceReso
                               endpoint_url=settings.S3_ENDPOINT_URL).Bucket(bucket_name)
     return bucket
 
+def get_content_disposition(content_type: str) -> str:
+    if content_type not in INLINE_MIME_TYPES:
+        return "attachment"
+    return ""
+
 def upload_image_to_s3(
         # See https://github.com/python/typeshed/issues/2706
         bucket: ServiceResource,
@@ -288,15 +298,10 @@ def upload_image_to_s3(
         "user_profile_id": str(user_profile.id),
         "realm_id": str(user_profile.realm_id),
     }
-
-    content_disposition = ''
     if content_type is None:
-        content_type = ''
-    if content_type not in INLINE_MIME_TYPES:
-        content_disposition = "attachment"
-
+        content_type = ""
     key.put(Body=contents, Metadata=metadata, ContentType=content_type,
-            ContentDisposition=content_disposition)
+            ContentDisposition=get_content_disposition(content_type))
 
 def check_upload_within_quota(realm: Realm, uploaded_file_size: int) -> None:
     upload_quota = realm.upload_quota_bytes()
@@ -306,30 +311,31 @@ def check_upload_within_quota(realm: Realm, uploaded_file_size: int) -> None:
     if (used_space + uploaded_file_size) > upload_quota:
         raise RealmUploadQuotaError(_("Upload would exceed your organization's upload quota."))
 
-def get_file_info(request: HttpRequest, user_file: File) -> Tuple[str, int, Optional[str]]:
-
-    uploaded_file_name = user_file.name
+def get_file_info(request: HttpRequest, uploaded_file_name: str) -> Tuple[str, str]:
     content_type = request.GET.get('mimetype')
     if content_type is None:
         guessed_type = guess_type(uploaded_file_name)[0]
         if guessed_type is not None:
             content_type = guessed_type
+        else:
+            content_type = ""
     else:
         extension = guess_extension(content_type)
         if extension is not None:
             uploaded_file_name = uploaded_file_name + extension
 
     uploaded_file_name = urllib.parse.unquote(uploaded_file_name)
-    uploaded_file_size = user_file.size
 
-    return uploaded_file_name, uploaded_file_size, content_type
+    return uploaded_file_name, content_type
 
+def get_s3_client() -> Any:
+    return boto3.client('s3', aws_access_key_id=settings.S3_KEY,
+                        aws_secret_access_key=settings.S3_SECRET_KEY,
+                        region_name=settings.S3_REGION,
+                        endpoint_url=settings.S3_ENDPOINT_URL)
 
 def get_signed_upload_url(path: str) -> str:
-    client = boto3.client('s3', aws_access_key_id=settings.S3_KEY,
-                          aws_secret_access_key=settings.S3_SECRET_KEY,
-                          region_name=settings.S3_REGION,
-                          endpoint_url=settings.S3_ENDPOINT_URL)
+    client = get_s3_client()
     return client.generate_presigned_url(ClientMethod='get_object',
                                          Params={
                                              'Bucket': settings.S3_AUTH_UPLOADS_BUCKET,
@@ -360,16 +366,19 @@ class S3UploadBackend(ZulipUploadBackend):
         key.delete()
         return True
 
+    def get_target_file_path(self, file_name: str, realm: Realm) -> str:
+        return "/".join([
+            str(realm.id),
+            secrets.token_urlsafe(18),
+            sanitize_name(file_name),
+        ])
+
     def upload_message_file(self, uploaded_file_name: str, uploaded_file_size: int,
                             content_type: Optional[str], file_data: bytes,
                             user_profile: UserProfile, target_realm: Optional[Realm]=None) -> str:
         if target_realm is None:
             target_realm = user_profile.realm
-        s3_file_name = "/".join([
-            str(target_realm.id),
-            secrets.token_urlsafe(18),
-            sanitize_name(uploaded_file_name),
-        ])
+        s3_file_name = self.get_target_file_path(uploaded_file_name, target_realm)
         url = f"/user_uploads/{s3_file_name}"
 
         upload_image_to_s3(
@@ -674,16 +683,19 @@ def get_local_file_path_id_from_token(token: str) -> Optional[str]:
     return path_id
 
 class LocalUploadBackend(ZulipUploadBackend):
+    def get_target_file_path(self, file_name: str, realm: Realm) -> str:
+        return "/".join([
+            str(realm.id),
+            format(random.randint(0, 255), 'x'),
+            secrets.token_urlsafe(18),
+            sanitize_name(file_name),
+        ])
+
     def upload_message_file(self, uploaded_file_name: str, uploaded_file_size: int,
                             content_type: Optional[str], file_data: bytes,
                             user_profile: UserProfile, target_realm: Optional[Realm]=None) -> str:
         # Split into 256 subdirectories to prevent directories from getting too big
-        path = "/".join([
-            str(user_profile.realm_id),
-            format(random.randint(0, 255), 'x'),
-            secrets.token_urlsafe(18),
-            sanitize_name(uploaded_file_name),
-        ])
+        path = self.get_target_file_path(uploaded_file_name, user_profile.realm)
 
         write_local_file('files', path, file_data)
         create_attachment(uploaded_file_name, path, user_profile, uploaded_file_size)
@@ -905,12 +917,6 @@ def create_attachment(file_name: str, path_id: str, user_profile: UserProfile,
     from zerver.lib.actions import notify_attachment_update
     notify_attachment_update(user_profile, 'add', attachment.to_dict())
     return True
-
-def upload_message_image_from_request(request: HttpRequest, user_file: File,
-                                      user_profile: UserProfile) -> str:
-    uploaded_file_name, uploaded_file_size, content_type = get_file_info(request, user_file)
-    return upload_message_file(uploaded_file_name, uploaded_file_size,
-                               content_type, user_file.read(), user_profile)
 
 def upload_export_tarball(realm: Realm, tarball_path: str,
                           percent_callback: Optional[Callable[[Any], None]]=None) -> str:
