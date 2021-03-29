@@ -5,7 +5,6 @@ import _ from "lodash";
 import render_compose_all_everyone from "../templates/compose_all_everyone.hbs";
 import render_compose_announce from "../templates/compose_announce.hbs";
 import render_compose_invite_users from "../templates/compose_invite_users.hbs";
-import render_compose_not_subscribed from "../templates/compose_not_subscribed.hbs";
 import render_compose_private_stream_alert from "../templates/compose_private_stream_alert.hbs";
 
 import * as blueslip from "./blueslip";
@@ -114,7 +113,10 @@ export function update_video_chat_button_display() {
 export function clear_all_everyone_warnings() {
     $("#compose-all-everyone").hide();
     $("#compose-all-everyone").empty();
-    $("#compose-send-status").hide();
+    // Let the warning or error message stay even after the message is sent if 'stay' is true.
+    if ($("#compose-send-status").attr("stay") !== "true") {
+        $("#compose-send-status").hide();
+    }
 }
 
 function show_sending_indicator(whats_happening) {
@@ -139,7 +141,10 @@ function show_announce_warnings(stream_id) {
 export function clear_announce_warnings() {
     $("#compose-announce").hide();
     $("#compose-announce").empty();
-    $("#compose-send-status").hide();
+    // Let the warning or error message stay even after the message is sent if 'stay' is true.
+    if ($("#compose-send-status").attr("stay") !== "true") {
+        $("#compose-send-status").hide();
+    }
 }
 
 export function clear_invites() {
@@ -282,10 +287,11 @@ export function create_message_object() {
     return message;
 }
 
-export function compose_error(error_text, bad_input) {
+export function compose_error(error_text, bad_input, stay = false) {
     $("#compose-send-status")
         .removeClass(common.status_classes)
         .addClass("alert-error")
+        .attr("stay", stay)
         .stop(true)
         .fadeTo(0, 1);
     $("#compose-error-msg").html(error_text);
@@ -304,26 +310,14 @@ export function nonexistent_stream_reply_error() {
     }, 5000);
 }
 
-function compose_not_subscribed_error(error_text, bad_input) {
-    $("#compose-send-status")
-        .removeClass(common.status_classes)
-        .addClass("home-error-bar")
-        .stop(true)
-        .fadeTo(0, 1);
-    $("#compose-error-msg").html(error_text);
-    $("#compose-send-button").prop("disabled", false);
-    $("#sending-indicator").hide();
-    $(".compose-send-status-close").hide();
-    if (bad_input !== undefined) {
-        bad_input.trigger("focus").trigger("select");
-    }
-}
-
 export function clear_compose_box() {
     $("#compose-textarea").val("").trigger("focus");
     drafts.delete_draft_after_send();
     compose_ui.autosize_textarea($("#compose-textarea"));
-    $("#compose-send-status").hide(0);
+    // Let the warning or error message stay even after the message is sent if 'stay' is true.
+    if ($("#compose-send-status").attr("stay") !== "true") {
+        $("#compose-send-status").hide(0);
+    }
     $("#compose-send-button").prop("disabled", false);
     $("#sending-indicator").hide();
 }
@@ -469,7 +463,7 @@ export function get_invalid_recipient_emails() {
 function check_unsubscribed_stream_for_send(stream_name, autosubscribe) {
     let result;
     if (!autosubscribe) {
-        return "not-subscribed";
+        return true;
     }
 
     // In the rare circumstance of the autosubscribe option, we
@@ -482,10 +476,9 @@ function check_unsubscribed_stream_for_send(stream_name, autosubscribe) {
         async: false,
         success(data) {
             if (data.subscribed) {
-                result = "subscribed";
-            } else {
-                result = "not-subscribed";
+                return true;
             }
+            return false;
         },
         error(xhr) {
             if (xhr.status === 404) {
@@ -495,7 +488,7 @@ function check_unsubscribed_stream_for_send(stream_name, autosubscribe) {
             }
         },
     });
-    return result;
+    return validation_error(result, stream_name);
 }
 
 export function wildcard_mention_allowed() {
@@ -658,14 +651,6 @@ export function validation_error(error_type, stream_name) {
                 $("#stream_message_recipient_stream"),
             );
             return false;
-        case "not-subscribed": {
-            const sub = stream_data.get_sub(stream_name);
-            const new_row = render_compose_not_subscribed({
-                should_display_sub_button: sub.should_display_subscription_button,
-            });
-            compose_not_subscribed_error(new_row, $("#stream_message_recipient_stream"));
-            return false;
-        }
     }
     return true;
 }
@@ -675,8 +660,7 @@ export function validate_stream_message_address_info(stream_name) {
         return true;
     }
     const autosubscribe = page_params.narrow_stream !== undefined;
-    const error_type = check_unsubscribed_stream_for_send(stream_name, autosubscribe);
-    return validation_error(error_type, stream_name);
+    return check_unsubscribed_stream_for_send(stream_name, autosubscribe);
 }
 
 function validate_stream_message() {
