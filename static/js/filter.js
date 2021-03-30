@@ -488,6 +488,9 @@ export class Filter {
         if (_.isEqual(term_types, ["streams-public"])) {
             return true;
         }
+        if (_.isEqual(term_types, ["streams-subscribed"])) {
+            return true;
+        }
         return false;
     }
 
@@ -538,6 +541,8 @@ export class Filter {
                     return "/#narrow/is/mentioned";
                 case "streams-public":
                     return "/#narrow/streams/public";
+                case "streams-subscribed":
+                    return "/#narrow/streams/subscribed";
                 case "pm-with":
                     // join is used to transform the array to a comma separated string
                     return (
@@ -604,6 +609,8 @@ export class Filter {
                     return i18n.t("All messages including muted streams");
                 case "streams-public":
                     return i18n.t("Public stream messages in organization");
+                case "streams-subscribed":
+                    return i18n.t("Subscribed stream messages in organization");
                 case "stream":
                     if (!this._sub) {
                         return i18n.t("Unknown stream");
@@ -826,6 +833,7 @@ export class Filter {
         const levels = [
             "in",
             "streams-public",
+            "streams-subscribed",
             "stream",
             "topic",
             "pm-with",

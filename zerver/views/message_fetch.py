@@ -45,6 +45,7 @@ from zerver.lib.streams import (
     can_access_stream_history_by_name,
     get_public_streams_queryset,
     get_stream_by_narrow_operand_access_unchecked,
+    get_subscribed_streams_for_user_by_history_public_to_subscribers,
     get_web_public_streams_queryset,
 )
 from zerver.lib.topic import DB_TOPIC_NAME, MATCH_TOPIC, topic_column_sa, topic_match_sa
@@ -306,6 +307,35 @@ class NarrowBuilder:
             recipient_queryset = get_public_streams_queryset(self.realm)
         elif operand == "web-public":
             recipient_queryset = get_web_public_streams_queryset(self.realm)
+        elif operand == "subscribed":
+            subscribed_streams_with_full_history = (
+                get_subscribed_streams_for_user_by_history_public_to_subscribers(
+                    self.realm, self.user_profile, True
+                )
+            )
+            subscribed_streams_with_limited_history = (
+                get_subscribed_streams_for_user_by_history_public_to_subscribers(
+                    self.realm, self.user_profile, False
+                )
+            )
+            search_recipient_ids = subscribed_streams_with_limited_history.values_list(
+                "recipient_id", flat=True
+            ).order_by("id")
+            full_history_recipient_ids = subscribed_streams_with_full_history.values_list(
+                "recipient_id", flat=True
+            ).order_by("id")
+            subscribed_recipient_cond = column("recipient_id", Integer).in_(search_recipient_ids)
+            full_history_recipient_cond = column("recipient_id", Integer).in_(
+                full_history_recipient_ids
+            )
+
+            user_message_query = join_with_usermessage(self.user_profile, query)
+            user_message_query_alias = user_message_query.where(subscribed_recipient_cond).alias()
+            subscribed_recipient_cond = column("id").in_(user_message_query_alias)
+
+            query = query.where(or_(full_history_recipient_cond, subscribed_recipient_cond))
+            return query
+
         else:
             raise BadNarrowOperator("unknown streams operand " + operand)
 
@@ -699,6 +729,10 @@ def ok_to_include_history(
                 and term["operand"] == "public"
                 and not term.get("negated", False)
                 and user_profile.can_access_public_streams()
+            ) or (
+                term["operator"] == "streams"
+                and term["operand"] == "subscribed"
+                and user_profile.can_access_public_streams()
             ):
                 include_history = True
         # Disable historical messages if the user is narrowing on anything
@@ -754,29 +788,40 @@ def exclude_muting_conditions(
     return conditions
 
 
+def join_with_usermessage(user_profile: Optional[UserProfile], query: Select) -> Select:
+
+    assert user_profile is not None
+
+    query = select(
+        [column("message_id")],
+        and_(
+            column("user_profile_id") == literal(user_profile.id), column("message_id").in_(query)
+        ),
+        join(
+            table("zerver_usermessage"),
+            table("zerver_message"),
+            literal_column("zerver_usermessage.message_id", Integer)
+            == literal_column("zerver_message.id", Integer),
+        ),
+    )
+    return query
+
+
 def get_base_query_for_search(
     user_profile: Optional[UserProfile], need_message: bool, need_user_message: bool
 ) -> Tuple[Select, "ColumnElement[int]"]:
     # Handle the simple case where user_message isn't involved first.
+    query = select([column("id", Integer).label("message_id")], None, table("zerver_message"))
+
     if not need_user_message:
         assert need_message
-        query = select([column("id", Integer).label("message_id")], None, table("zerver_message"))
         inner_msg_id_col: ColumnElement[int]
         inner_msg_id_col = literal_column("zerver_message.id", Integer)  # type: ignore[assignment] # https://github.com/dropbox/sqlalchemy-stubs/pull/189
         return (query, inner_msg_id_col)
 
     assert user_profile is not None
     if need_message:
-        query = select(
-            [column("message_id"), column("flags", Integer)],
-            column("user_profile_id") == literal(user_profile.id),
-            join(
-                table("zerver_usermessage"),
-                table("zerver_message"),
-                literal_column("zerver_usermessage.message_id", Integer)
-                == literal_column("zerver_message.id", Integer),
-            ),
-        )
+        query = join_with_usermessage(user_profile, query)
         inner_msg_id_col = column("message_id", Integer)
         return (query, inner_msg_id_col)
 
@@ -1102,8 +1147,10 @@ def get_messages_backend(
     else:
         for row in rows:
             message_id = row[0]
-            flags = row[1]
-            user_message_flags[message_id] = UserMessage.flags_list_for_flags(flags)
+            um_rows = UserMessage.objects.filter(user_profile=user_profile, message__id=message_id)
+            user_message_flags[message_id] = []
+            for um in um_rows:
+                user_message_flags[message_id] += um.flags_list()
             message_ids.append(message_id)
 
     search_fields: Dict[int, Dict[str, str]] = {}

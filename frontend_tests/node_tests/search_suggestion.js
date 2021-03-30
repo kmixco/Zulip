@@ -361,6 +361,7 @@ test("empty_query_suggestions", (override) => {
     const expected = [
         "",
         "streams:public",
+        "streams:subscribed",
         "is:private",
         "is:starred",
         "is:mentioned",
@@ -492,6 +493,7 @@ test("check_is_suggestions", (override) => {
     expected = [
         "",
         "streams:public",
+        "streams:subscribed",
         "is:private",
         "is:starred",
         "is:mentioned",
@@ -540,7 +542,7 @@ test("check_is_suggestions", (override) => {
 
     query = "st";
     suggestions = get_suggestions("", query);
-    expected = ["st", "streams:public", "is:starred", "stream:"];
+    expected = ["st", "streams:public", "streams:subscribed", "is:starred", "stream:"];
     assert.deepEqual(suggestions.strings, expected);
 
     query = "is:sta";
@@ -876,7 +878,7 @@ test("operator_suggestions", () => {
 
     query = "st";
     suggestions = get_suggestions("", query);
-    expected = ["st", "streams:public", "is:starred", "stream:"];
+    expected = ["st", "streams:public", "streams:subscribed", "is:starred", "stream:"];
     assert.deepEqual(suggestions.strings, expected);
 
     query = "group-";
@@ -886,7 +888,14 @@ test("operator_suggestions", () => {
 
     query = "-s";
     suggestions = get_suggestions("", query);
-    expected = ["-s", "-streams:public", "-sender:myself@zulip.com", "-stream:", "-sender:"];
+    expected = [
+        "-s",
+        "-streams:public",
+        "-streams:subscribed",
+        "-sender:myself@zulip.com",
+        "-stream:",
+        "-sender:",
+    ];
     assert.deepEqual(suggestions.strings, expected);
 
     query = "-f";
