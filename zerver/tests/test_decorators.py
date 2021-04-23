@@ -132,11 +132,7 @@ class DecoratorTestCase(ZulipTestCase):
         ) -> int:
             return x + x
 
-        class Request:
-            GET: Dict[str, str] = {}
-            POST: Dict[str, str] = {}
-
-        request = Request()
+        request = HostRequestMock()
 
         request.POST = dict(bogus="5555")
         with self.assertRaises(RequestVariableMissingError):
@@ -171,11 +167,7 @@ class DecoratorTestCase(ZulipTestCase):
         ) -> int:
             return sum(numbers)
 
-        class Request:
-            GET: Dict[str, str] = {}
-            POST: Dict[str, str] = {}
-
-        request = Request()
+        request = HostRequestMock()
 
         with self.assertRaises(RequestVariableMissingError):
             get_total(request)
@@ -206,11 +198,7 @@ class DecoratorTestCase(ZulipTestCase):
         ) -> int:
             return sum(numbers)
 
-        class Request:
-            GET: Dict[str, str] = {}
-            POST: Dict[str, str] = {}
-
-        request = Request()
+        request = HostRequestMock()
 
         with self.assertRaises(RequestVariableMissingError):
             get_total(request)
@@ -236,11 +224,7 @@ class DecoratorTestCase(ZulipTestCase):
         ) -> str:
             return value[1:-1]
 
-        class Request:
-            GET: Dict[str, str] = {}
-            POST: Dict[str, str] = {}
-
-        request = Request()
+        request = HostRequestMock()
 
         with self.assertRaises(RequestVariableMissingError):
             get_middle_characters(request)
@@ -575,14 +559,11 @@ class RateLimitTestCase(ZulipTestCase):
 
     def test_internal_local_clients_skip_rate_limiting(self) -> None:
         class Client:
-            name = "internal"
+            name = "internal"  
 
-        class Request:
-            client = Client()
-            META = {"REMOTE_ADDR": "127.0.0.1"}
-            user = AnonymousUser()
-
-        req = Request()
+        req = HostRequestMock(user_profile=AnonymousUser())
+        req.META = {"REMOTE_ADDR": "127.0.0.1"}
+        req.client = Client()
 
         def f(req: Any) -> str:
             return "some value"
@@ -599,12 +580,9 @@ class RateLimitTestCase(ZulipTestCase):
         class Client:
             name = "internal"
 
-        class Request:
-            client = Client()
-            META = {"REMOTE_ADDR": "3.3.3.3"}
-            user = AnonymousUser()
-
-        req = Request()
+        req = HostRequestMock(user_profile=AnonymousUser())
+        req.META = {"REMOTE_ADDR": "3.3.3.3"}
+        req.client = Client()
 
         def f(req: Any) -> str:
             return "some value"
