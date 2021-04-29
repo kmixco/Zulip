@@ -3,12 +3,14 @@ import {FoldDict} from "./fold_dict";
 
 let user_group_name_dict;
 let user_group_by_id_dict;
+let active_user_group_by_id_dict;
 
 // We have an init() function so that our automated tests
 // can easily clear data.
 export function init() {
     user_group_name_dict = new FoldDict();
     user_group_by_id_dict = new Map();
+    active_user_group_by_id_dict = new Map();
 }
 
 // WE INITIALIZE DATA STRUCTURES HERE!
@@ -21,9 +23,13 @@ export function add(user_group) {
     user_group_by_id_dict.set(user_group.id, user_group);
 }
 
+export function add_in_realm(user_group) {
+    active_user_group_by_id_dict.set(user_group.id, user_group);
+    add(user_group);
+}
+
 export function remove(user_group) {
-    user_group_name_dict.delete(user_group.name);
-    user_group_by_id_dict.delete(user_group.id);
+    active_user_group_by_id_dict.delete(user_group.id);
 }
 
 export function get_user_group_from_id(group_id, suppress_errors) {
@@ -34,6 +40,20 @@ export function get_user_group_from_id(group_id, suppress_errors) {
         return undefined;
     }
     return user_group_by_id_dict.get(group_id);
+}
+
+export function get_active_user_group_from_id(group_id, suppress_errors) {
+    if (!active_user_group_by_id_dict.has(group_id)) {
+        if (suppress_errors === undefined) {
+            blueslip.error("Unknown group_id in get_active_user_group_from_id: " + group_id);
+        }
+        return undefined;
+    }
+    return active_user_group_by_id_dict.get(group_id);
+}
+
+export function is_active_user_group(group) {
+    return active_user_group_by_id_dict.has(group.id);
 }
 
 export function update(event) {
@@ -54,8 +74,18 @@ export function get_user_group_from_name(name) {
     return user_group_name_dict.get(name);
 }
 
+export function get_active_user_group_from_name(name) {
+    const active_user_group_name_dict = new FoldDict();
+    for (const [name, group] of user_group_name_dict) {
+        if (is_active_user_group(group)) {
+            active_user_group_name_dict.set(name, group);
+        }
+    }
+    return active_user_group_name_dict.get(name);
+}
+
 export function get_realm_user_groups() {
-    return Array.from(user_group_by_id_dict.values()).sort((a, b) => a.id - b.id);
+    return Array.from(active_user_group_by_id_dict.values()).sort((a, b) => a.id - b.id);
 }
 
 export function is_member_of(user_group_id, user_id) {
@@ -85,7 +115,12 @@ export function remove_members(user_group_id, user_ids) {
 
 export function initialize(params) {
     for (const user_group of params.realm_user_groups) {
-        add(user_group);
+        add_in_realm(user_group);
+    }
+    if (params.realm_non_active_user_groups) {
+        for (const user_group of params.realm_non_active_user_groups) {
+            add(user_group);
+        }
     }
 }
 
