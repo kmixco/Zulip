@@ -88,6 +88,8 @@ function message_matches_search_term(message, operator, operand) {
                 return message.alerted;
             } else if (operand === "unread") {
                 return unread.message_unread(message);
+            } else if (operand === "muted") {
+                return !message_in_home(message);
             }
             return false; // is:whatever returns false
 
@@ -842,6 +844,7 @@ export class Filter {
             "is-private",
             "is-starred",
             "is-unread",
+            "is-muted",
             "has-link",
             "has-image",
             "has-attachment",
@@ -916,7 +919,7 @@ export class Filter {
     static describe_is_operator(operator) {
         const verb = operator.negated ? "exclude " : "";
         const operand = operator.operand;
-        const operand_list = ["private", "starred", "alerted", "unread"];
+        const operand_list = ["private", "starred", "alerted", "unread", "muted"];
         if (operand_list.includes(operand)) {
             return verb + operand + " messages";
         } else if (operand === "mentioned") {
