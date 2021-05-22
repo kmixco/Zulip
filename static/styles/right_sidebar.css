@@ -186,6 +186,11 @@
             cursor: pointer;
         }
     }
+
+    &:hover > #user_filter_icon {
+        opacity: 1;
+        cursor: pointer;
+    }
 }
 
 #keyboard-icon {
