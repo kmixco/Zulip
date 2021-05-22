@@ -335,6 +335,11 @@ def get_chart_data(
         subgroup_to_label = {stats[0]: {None: "read"}}
         labels_sort_function = None
         include_empty_subgroups = True
+    elif chart_name == 'messages_in_stream':
+        stats = [COUNT_STATS['messages_in_stream:is_bot:day']]
+        tables = [aggregate_table, StreamCount]
+        labels_sort_function = None
+        include_empty_subgroups = True
     else:
         raise JsonableError(_("Unknown chart name: {}").format(chart_name))
 
