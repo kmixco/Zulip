@@ -618,6 +618,7 @@ export function get_search_result(base_query, query) {
         all_operators = Filter.parse((base_query + " " + query).trim());
     }
     const search_operators = Filter.parse(query);
+
     let last = {operator: "", operand: "", negated: false};
     if (search_operators.length > 0) {
         last = search_operators.slice(-1)[0];
