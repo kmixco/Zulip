@@ -1,5 +1,6 @@
 import $ from "jquery";
 
+import render_extended_description_message_view_header from "../templates/extended_description_message_view_header.hbs";
 import render_message_view_header from "../templates/message_view_header.hbs";
 
 import {$t} from "./i18n";
@@ -93,7 +94,7 @@ function bind_title_area_handlers() {
         e.stopPropagation();
     });
 
-    $("#message_view_header span:nth-last-child(2)").on("click", (e) => {
+    $("#message_view_header span:nth-last-child(4)").on("click", (e) => {
         if (document.getSelection().type === "Range") {
             // Allow copy/paste to work normally without interference.
             return;
@@ -118,6 +119,11 @@ function bind_title_area_handlers() {
         });
 }
 
+function hide_extended_description() {
+    const extended_description_elem = $("#extended_description_message_view_header");
+    extended_description_elem.empty();
+}
+
 function build_message_view_header(filter) {
     // This makes sure we don't waste time appending
     // message_view_header on a template where it's never used
@@ -127,6 +133,47 @@ function build_message_view_header(filter) {
         const message_view_header_data = make_message_view_header(filter);
         append_and_display_title_area(message_view_header_data);
         bind_title_area_handlers();
+
+        // check if need of extended description.
+        if (
+            $(".narrow_description")[0] &&
+            $(".narrow_description")[0].scrollWidth > $(".narrow_description").innerWidth()
+        ) {
+            $(".extended_description_down").show();
+
+            $(".extended_description_down").on("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // hide down and show up icon.
+                $(".extended_description_down").hide();
+                $(".extended_description_up").show();
+
+                const extended_description_elem = $("#extended_description_message_view_header");
+                extended_description_elem.empty();
+                const rendered = render_extended_description_message_view_header(
+                    message_view_header_data,
+                );
+                extended_description_elem.append(rendered);
+                extended_description_elem.removeClass("notdisplayed");
+
+                $(".extended_description_up").on("click", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // hide up and down show icon.
+                    $(".extended_description_down").show();
+                    $(".extended_description_up").hide();
+
+                    const extended_description_elem = $(
+                        "#extended_description_message_view_header",
+                    );
+                    extended_description_elem.empty();
+                });
+            });
+        } else {
+            // no need of extended description.
+            hide_extended_description();
+        }
         if (page_params.search_pills_enabled && $("#search_query").is(":focus")) {
             open_search_bar_and_close_narrow_description();
         } else {
