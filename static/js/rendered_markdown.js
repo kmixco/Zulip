@@ -235,6 +235,24 @@ export const update_elements = (content) => {
         });
     });
 
+    // We display the still image normally but show the GIF on hover.
+    content.find("a[href*='giphy.com/media']").each(function () {
+        const $a_gif = $(this);
+        const gif_url = $a_gif.attr("href");
+        // Add `_s` to the gif file name to get the still image.
+        const still_image_url = gif_url.replace("giphy.gif", "giphy_s.gif");
+        $a_gif.find("img").attr("src", still_image_url);
+        $a_gif.append("<div class='giphy_image_text_overlay'><span>GIF</div>");
+        $a_gif.closest(".messagebox-content").hover(
+            () => {
+                $(this).find("img").attr("src", gif_url);
+            },
+            () => {
+                $(this).find("img").attr("src", still_image_url);
+            },
+        );
+    });
+
     // Display emoji (including realm emoji) as text if
     // page_params.emojiset is 'text'.
     if (page_params.emojiset === "text") {
