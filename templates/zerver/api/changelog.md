@@ -11,6 +11,17 @@ below features are supported.
 
 ## Changes in Zulip 5.0
 
+**Feature level 76**
+
+* [`GET /realm/linkifiers`](/api/get-linkifiers), [`POST /realm/filters`]
+  (/api/add-linkifier) and [`PATCH /realm/filters/{filter_id}`]
+  (/api/update-linkifier): Added `render_format_string` field to linkifier
+  objects sent in `realm_linkifiers` events.
+* [`GET /events`](/api/get-events): Added `render_format_string` field to
+  linkifier objects sent in `realm_linkifiers` events.
+* [`POST /register`](/api/register-queue): Added `render_format_string` field
+  to linkifier objects sent in `realm_linkifiers` events.
+
 **Feature level 75**
 
 * [`POST /register`](/api/register-queue), `PATCH /realm`: Replaced `allow_community_topic_editing`

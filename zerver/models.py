@@ -920,7 +920,7 @@ post_delete.connect(flush_realm_emoji, sender=RealmEmoji)
 
 
 def filter_pattern_validator(value: str) -> Pattern[str]:
-    regex = re.compile(r"^(?:(?:[\w\-#_= /:]*|[+]|[!])(\(\?P<\w+>.+\)))+$")
+    regex = re.compile(r"^(?:(?:[\w\-#= /:%.@~]*|[+]|[!])(\(\?P<\w+>.+\))(?:[\w\-%#?&./=]*))+$")
     error_msg = _("Invalid linkifier pattern.  Valid characters are {}.").format(
         "[ a-zA-Z_#=/:+!-]",
     )
@@ -953,6 +953,18 @@ class RealmFilter(models.Model):
     realm: Realm = models.ForeignKey(Realm, on_delete=CASCADE)
     pattern: str = models.TextField()
     url_format_string: str = models.TextField(validators=[URLValidator(), filter_format_validator])
+    render_format_string: str = models.TextField(
+        default="",
+        blank=True,
+        validators=[
+            RegexValidator(
+                regex=r"^([\.\/:\w#?=&;!@~-]*%\(([\w-]+)\)s)*[/\w#?=&;~@-]*$",
+                message=_("Invalid render format string."),
+            )
+        ],
+    )
+
+    group_match_regex = re.compile(r"(?<!%)%\((?P<group_name>[^()]+)\)s")
 
     class Meta:
         unique_together = ("realm", "pattern")
@@ -973,8 +985,7 @@ class RealmFilter(models.Model):
         # this regex will incorrectly reject patterns that attempt to
         # escape % using %%.
         found_group_set: Set[str] = set()
-        group_match_regex = r"(?<!%)%\((?P<group_name>[^()]+)\)s"
-        for m in re.finditer(group_match_regex, self.url_format_string):
+        for m in self.group_match_regex.finditer(self.url_format_string):
             group_name = m.group("group_name")
             found_group_set.add(group_name)
 
@@ -999,8 +1010,28 @@ class RealmFilter(models.Model):
                 params={"name": name},
             )
 
+        if self.render_format_string:
+            found_group_set = set()
+            for m in self.group_match_regex.finditer(self.render_format_string):
+                group_name = m.group("group_name")
+                found_group_set.add(group_name)
+
+            # Report patterns missing in linkifier pattern.
+            #
+            # NOTE: We do not need to report the missing patterns in Render format string
+            # as some users may or may not want to render every patterns found in linkifer pattern.
+            missing_in_pattern_set = found_group_set - group_set
+            if len(missing_in_pattern_set) > 0:
+                name = list(sorted(missing_in_pattern_set))[0]
+                raise ValidationError(
+                    _(
+                        "Group %(name)r in Render format string is not present in linkifier pattern."
+                    ),
+                    params={"name": name},
+                )
+
     def __str__(self) -> str:
-        return f"<RealmFilter({self.realm.string_id}): {self.pattern} {self.url_format_string}>"
+        return f"<RealmFilter({self.realm.string_id}): {self.pattern} {self.url_format_string} {self.render_format_string}>"
 
 
 def get_linkifiers_cache_key(realm_id: int) -> str:
@@ -1041,6 +1072,7 @@ def linkifiers_for_realm_remote_cache(realm_id: int) -> List[LinkifierDict]:
             LinkifierDict(
                 pattern=linkifier.pattern,
                 url_format=linkifier.url_format_string,
+                render_format=linkifier.render_format_string,
                 id=linkifier.id,
             )
         )

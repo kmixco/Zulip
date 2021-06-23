@@ -1296,7 +1296,7 @@ class MarkdownTest(ZulipTestCase):
         linkifier.save()
         self.assertEqual(
             linkifier.__str__(),
-            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s>",
+            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s >",
         )
 
         msg = Message(sender=self.example_user("othello"))
@@ -1398,6 +1398,153 @@ class MarkdownTest(ZulipTestCase):
             ],
         )
 
+    def test_realm_linkifers_with_render_string(self) -> None:
+        realm = get_realm("zulip")
+        pattern = r"#(?P<id>[0-9]{2,8})"
+        url_format_string = r"https://trac.example.com/ticket/%(id)s"
+        render_format_string = r"ticket-%(id)s"
+        linkifier = RealmFilter(
+            realm=realm,
+            pattern=pattern,
+            url_format_string=url_format_string,
+            render_format_string=render_format_string,
+        )
+        linkifier.save()
+        self.assertEqual(
+            linkifier.__str__(),
+            f"<RealmFilter(zulip): {pattern} {url_format_string} {render_format_string}>",
+        )
+
+        hamlet = self.example_user("hamlet")
+        msg = Message(sender=hamlet)
+        msg.set_topic_name("#444")
+
+        flush_per_request_caches()
+
+        content = "We should fix #224 and #115, but not issue#124 or #1124z or [trac #15](https://trac.example.com/ticket/16) today."
+        converted = markdown_convert(content, message_realm=realm, message=msg)
+        converted_topic = topic_links(realm.id, msg.topic_name())
+
+        self.assertEqual(
+            converted,
+            '<p>We should fix <a href="https://trac.example.com/ticket/224">ticket-224</a> and <a href="https://trac.example.com/ticket/115">ticket-115</a>, but not issue#124 or #1124z or <a href="https://trac.example.com/ticket/16">trac #15</a> today.</p>',
+        )
+        self.assertEqual(
+            converted_topic, [{"url": "https://trac.example.com/ticket/444", "text": "ticket-444"}]
+        )
+
+        # Test nested realm patterns.
+        # This should avoid double processing or going into an infinite loop.
+
+        pattern = r"ticket-(?P<id>[0-9]+)"
+        url_format_string = r"https://trac.example.com/new_ticket/%(id)s"
+        render_format_string = r"#%(id)s"
+        linkifier = RealmFilter(
+            realm=realm,
+            pattern=pattern,
+            url_format_string=url_format_string,
+            render_format_string=render_format_string,
+        )
+        linkifier.save()
+        self.assertEqual(
+            linkifier.__str__(),
+            f"<RealmFilter(zulip): {pattern} {url_format_string} {render_format_string}>",
+        )
+
+        msg = Message(sender=hamlet)
+        msg.set_topic_name("#4321 ticket-4321 https://google.com")
+
+        content = "We have two tickets: 1) ticket-1234 2) #1234 both of them must be linked to different urls and texts."
+        converted = markdown_convert(content, message_realm=realm, message=msg)
+        converted_topic = topic_links(realm.id, msg.topic_name())
+
+        self.assertEqual(
+            converted,
+            '<p>We have two tickets: 1) <a href="https://trac.example.com/new_ticket/1234">#1234</a> 2) <a href="https://trac.example.com/ticket/1234">ticket-1234</a> both of them must be linked to different urls and texts.</p>',
+        )
+        self.assertEqual(
+            converted_topic,
+            [
+                {"url": "https://trac.example.com/ticket/4321", "text": "ticket-4321"},
+                {"url": "https://trac.example.com/new_ticket/4321", "text": "#4321"},
+                {"url": "https://google.com", "text": "https://google.com"},
+            ],
+        )
+
+        # We now test linkifiers as Link-Shorteners.
+        pattern = r"https://github.com/(?P<org>[\w\-]+)/(?P<repo>[\w\-]+)/issues/(?P<id>[0-9]+)"
+        url_format_string = r"https://github.com/%(org)s/%(repo)s/issues/%(id)s"
+        render_format_string = r"%(org)s/%(repo)s#%(id)s"
+        linkifier = RealmFilter(
+            realm=realm,
+            pattern=pattern,
+            url_format_string=url_format_string,
+            render_format_string=render_format_string,
+        )
+        linkifier.save()
+        self.assertEqual(
+            linkifier.__str__(),
+            f"<RealmFilter(zulip): {pattern} {url_format_string} {render_format_string}>",
+        )
+
+        github_issue_url = "https://github.com/zulip/zulip-mobile/issues/17971"
+
+        msg = Message(sender=hamlet)
+        msg.set_topic_name(github_issue_url)
+
+        converted = markdown_convert(content=github_issue_url, message_realm=realm, message=msg)
+        converted_topic = topic_links(realm.id, msg.topic_name())
+
+        self.assertEqual(
+            converted,
+            f'<p><a href="{github_issue_url}">zulip/zulip-mobile#17971</a></p>',
+        )
+        self.assertEqual(
+            converted_topic,
+            [
+                {"text": "zulip/zulip-mobile#17971", "url": github_issue_url},
+                {"text": github_issue_url, "url": github_issue_url},
+            ],
+        )
+
+        pattern = r"https://github.com/(?P<org>[\w\-]+)/(?P<repo>[\w\-]+)/commit/(?P<commit_id>[0-9a-f]{7})(?P<id>[0-9a-f]{33})"
+        url_format_string = r"https://github.com/%(org)s/%(repo)s/commit/%(commit_id)s%(id)s"
+        render_format_string = r"%(org)s/%(repo)s@%(commit_id)s"
+
+        linkifier = RealmFilter(
+            realm=realm,
+            pattern=pattern,
+            url_format_string=url_format_string,
+            render_format_string=render_format_string,
+        )
+        linkifier.save()
+        self.assertEqual(
+            linkifier.__str__(),
+            f"<RealmFilter(zulip): {pattern} {url_format_string} {render_format_string}>",
+        )
+
+        github_commit_url = (
+            "https://github.com/zulip/zulip-mobile/commit/8ee652e560dcc6967b1af3d0b1ce3084a447bb17"
+        )
+
+        msg = Message(sender=hamlet)
+        msg.set_topic_name(github_commit_url)
+
+        converted = markdown_convert(content=github_commit_url, message_realm=realm, message=msg)
+        converted_topic = topic_links(realm.id, msg.topic_name())
+
+        self.assertEqual(
+            converted,
+            f'<p><a href="{github_commit_url}">zulip/zulip-mobile@8ee652e</a></p>',
+        )
+        self.assertEqual(
+            converted_topic,
+            [
+                {"text": "zulip/zulip-mobile@8ee652e", "url": github_commit_url},
+                {"text": github_commit_url, "url": github_commit_url},
+            ],
+        )
+
     def test_multiple_matching_realm_patterns(self) -> None:
         realm = get_realm("zulip")
         url_format_string = r"https://trac.example.com/ticket/%(id)s"
@@ -1410,7 +1557,7 @@ class MarkdownTest(ZulipTestCase):
         self.assertEqual(
             linkifier_1.__str__(),
             r"<RealmFilter(zulip): (?P<id>ABC\-[0-9]+)(?![A-Z0-9-])"
-            " https://trac.example.com/ticket/%(id)s>",
+            " https://trac.example.com/ticket/%(id)s >",
         )
 
         url_format_string = r"https://other-trac.example.com/ticket/%(id)s"
@@ -1423,7 +1570,7 @@ class MarkdownTest(ZulipTestCase):
         self.assertEqual(
             linkifier_2.__str__(),
             r"<RealmFilter(zulip): (?P<id>[A-Z][A-Z0-9]*\-[0-9]+)(?![A-Z0-9-])"
-            " https://other-trac.example.com/ticket/%(id)s>",
+            " https://other-trac.example.com/ticket/%(id)s >",
         )
 
         msg = Message(sender=self.example_user("othello"))
@@ -2131,7 +2278,7 @@ class MarkdownTest(ZulipTestCase):
         linkifier.save()
         self.assertEqual(
             linkifier.__str__(),
-            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s>",
+            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s >",
         )
         # Create a user that potentially interferes with the pattern.
         test_user = create_user(
@@ -2215,7 +2362,7 @@ class MarkdownTest(ZulipTestCase):
         linkifier.save()
         self.assertEqual(
             linkifier.__str__(),
-            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s>",
+            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s >",
         )
         # Create a user-group that potentially interferes with the pattern.
         user_id = user_profile.id
@@ -2444,7 +2591,7 @@ class MarkdownTest(ZulipTestCase):
         linkifier.save()
         self.assertEqual(
             linkifier.__str__(),
-            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s>",
+            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s >",
         )
         # Create a topic link that potentially interferes with the pattern.
         denmark = get_stream("Denmark", realm)
@@ -2513,7 +2660,7 @@ class MarkdownTest(ZulipTestCase):
         linkifier.save()
         self.assertEqual(
             linkifier.__str__(),
-            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s>",
+            "<RealmFilter(zulip): #(?P<id>[0-9]{2,8}) https://trac.example.com/ticket/%(id)s >",
         )
         # Create a stream that potentially interferes with the pattern.
         stream = Stream.objects.create(name="Stream #1234", realm=realm)

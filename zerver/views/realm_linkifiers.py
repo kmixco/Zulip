@@ -22,12 +22,14 @@ def create_linkifier(
     user_profile: UserProfile,
     pattern: str = REQ(),
     url_format_string: str = REQ(),
+    render_format_string: str = REQ(default=""),
 ) -> HttpResponse:
     try:
         linkifier_id = do_add_linkifier(
             realm=user_profile.realm,
             pattern=pattern,
             url_format_string=url_format_string,
+            render_format_string=render_format_string,
         )
         return json_success({"id": linkifier_id})
     except ValidationError as e:
@@ -53,6 +55,7 @@ def update_linkifier(
     filter_id: int,
     pattern: str = REQ(),
     url_format_string: str = REQ(),
+    render_format_string: str = REQ(default=""),
 ) -> HttpResponse:
     try:
         do_update_linkifier(
@@ -60,6 +63,7 @@ def update_linkifier(
             id=filter_id,
             pattern=pattern,
             url_format_string=url_format_string,
+            render_format_string=render_format_string,
         )
         return json_success()
     except RealmFilter.DoesNotExist:
