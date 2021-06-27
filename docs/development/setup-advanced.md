@@ -59,9 +59,15 @@ ignoring the parts about `vagrant` (since you're not using it).
 
 ## Installing directly on Windows 10 with WSL 2
 
+We will be using Microsoft's new feature <a href="https://docs.microsoft.com/en-us/windows/wsl/wsl2-about" target="_blank">WSL 2</a> for
+installation.
+
+WSL 2 can be uninstalled by following the instructions [here from Microsoft](https://docs.microsoft.com/en-us/windows/wsl/faq#how-do-i-uninstall-a-wsl-distribution-).
+
 Zulip's development environment is most easily set up on Windows using
 the [WSL 2](https://docs.microsoft.com/en-us/windows/wsl/wsl2-about)
 installation method described here.
+
 
 1. Install WSL 2 by following the instructions provided by Microsoft
 [here](https://docs.microsoft.com/en-us/windows/wsl/wsl2-install).
