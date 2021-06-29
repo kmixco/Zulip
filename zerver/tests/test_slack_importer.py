@@ -1067,8 +1067,15 @@ class SlackImporter(ZulipTestCase):
                 RealmAuditLog.SUBSCRIPTION_CREATED,
                 RealmAuditLog.REALM_PLAN_TYPE_CHANGED,
                 RealmAuditLog.REALM_CREATED,
+                RealmAuditLog.REALM_IMPORTED,
             },
         )
+        extra_data = orjson.loads(
+            RealmAuditLog.objects.get(
+                realm=realm, event_type=RealmAuditLog.REALM_IMPORTED
+            ).extra_data
+        )
+        self.assertEqual(extra_data["from"], "slack")
 
         Realm.objects.filter(name=test_realm_subdomain).delete()
 
