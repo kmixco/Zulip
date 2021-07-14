@@ -694,7 +694,7 @@ export class MessageListView {
 
             rendered_groups = this._render_group({
                 message_groups: message_actions.prepend_groups,
-                use_match_properties: this.list.is_search(),
+                use_match_properties: this.list.is_search_type(),
                 table_name: this.table_name,
             });
 
@@ -721,7 +721,7 @@ export class MessageListView {
 
                 rendered_groups = this._render_group({
                     message_groups: [message_group],
-                    use_match_properties: this.list.is_search(),
+                    use_match_properties: this.list.is_search_type(),
                     table_name: this.table_name,
                 });
 
@@ -776,7 +776,7 @@ export class MessageListView {
 
             rendered_groups = this._render_group({
                 message_groups: message_actions.append_groups,
-                use_match_properties: this.list.is_search(),
+                use_match_properties: this.list.is_search_type(),
                 table_name: this.table_name,
             });
 
