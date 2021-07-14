@@ -1,7 +1,9 @@
 <div id="notification-settings" class="settings-section" data-name="notifications">
     <form class="notification-settings-form">
         <div id="general_notifications" class="subsection-parent">
-            <h3 class="inline-block">{{t "Notification triggers" }}</h3>
+            <h3 class="inline-block">{{t "Notification triggers" }}
+                {{> ../help_link_widget link="/help/stream-notifications" }}
+            </h3>
             <div class="alert-notification" id="general-notify-settings-status"></div>
             <p>{{t "Configure how Zulip notifies you about new messages." }}</p>
             <table id="notification-table" class="table table-condensed table-bordered wrapped-table">
@@ -11,13 +13,13 @@
                         <th colspan="2" width="28%">{{t "Desktop"}}</th>
                         <th rowspan="2" width="14%" class="{{#if show_push_notifications_tooltip.push_notifications}}control-label-disabled{{/if}}">
                             {{t "Mobile"}}
-                            {{#if (not page_params.realm_push_notifications_enabled) }}
-                            <i class="fa fa-question-circle settings-info-icon tippy-zulip-tooltip" data-tippy-content="{{t 'Mobile push notifications are not configured on this server.' }}"></i>
-                            {{/if}}
+                            {{#unless page_params.realm_push_notifications_enabled}}
+                            <i class="fa fa-info-circle settings-info-icon tippy-zulip-tooltip" data-tippy-content="{{t 'Mobile push notifications are not configured on this server.' }}" data-tippy-placement="top"></i>
+                            {{/unless}}
                         </th>
                         <th rowspan="2" width="14%">{{t "Email"}}</th>
                         <th rowspan="2" width="14%">@all
-                            <i class="fa fa-question-circle settings-info-icon tippy-zulip-tooltip" data-tippy-content="{{t 'Whether wildcard mentions like @all are treated as mentions for the purpose of notifications.' }}"></i>
+                            <i class="fa fa-info-circle settings-info-icon tippy-zulip-tooltip" data-tippy-content="{{t 'Whether wildcard mentions like @all are treated as mentions for the purpose of notifications.' }}" data-tippy-placement="top"></i>
                         </th>
                     </tr>
                     <tr>
@@ -74,8 +76,8 @@
                     <option value="{{ this }}">{{ this }}</option>
                     {{/each}}
                 </select>
-                <span id="play_notification_sound">
-                    <i class="fa fa-play-circle" aria-label="{{t 'Play sound' }}"></i>
+                <span class="button small no-style tippy-zulip-tooltip" id="play_notification_sound" data-tippy-content="{{t 'Play sound' }}" data-tippy-placement="top" aria-label="{{t 'Play sound' }}">
+                    <i class="fa fa-play-circle" aria-hidden="true"></i>
                 </span>
             </div>
 
