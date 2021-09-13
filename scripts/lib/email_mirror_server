@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from scripts.lib.setup_path import setup_path
+
+setup_path()
+os.environ["DJANGO_SETTINGS_MODULE"] = "zproject.settings"
+
+import django
+
+django.setup()
+
+from aiosmtpd import main, smtp
+
+from version import ZULIP_VERSION
+
+main.DEFAULT_CLASS = "zerver.lib.email_mirror_server.ZulipMessageHandler"
+smtp.__ident__ = f"Zulip {ZULIP_VERSION}"
+main.main()
