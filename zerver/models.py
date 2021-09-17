@@ -3660,6 +3660,7 @@ class AbstractRealmAuditLog(models.Model):
     USER_DEFAULT_ALL_PUBLIC_STREAMS_CHANGED = 131
     USER_SETTING_CHANGED = 132
     USER_DIGEST_EMAIL_CREATED = 133
+    USER_EXPORT_CONSENT_CHANGED = 134
 
     REALM_DEACTIVATED = 201
     REALM_REACTIVATED = 202
@@ -4053,3 +4054,21 @@ def flush_alert_word(*, instance: AlertWord, **kwargs: object) -> None:
 
 post_save.connect(flush_alert_word, sender=AlertWord)
 post_delete.connect(flush_alert_word, sender=AlertWord)
+
+
+class UserExportConsent(models.Model):
+    realm: Realm = models.ForeignKey(Realm, on_delete=CASCADE)
+    user: UserProfile = models.ForeignKey(UserProfile, on_delete=CASCADE)
+
+    YES = 1
+    NO = 0
+
+    response: int = models.SmallIntegerField(default=NO)
+    export_id = models.ForeignKey(RealmAuditLog, on_delete=CASCADE)
+    last_updated: datetime.datetime = models.DateTimeField(default=timezone_now)
+
+    class Meta:
+        unique_together = (
+            "user",
+            "export_id",
+        )
