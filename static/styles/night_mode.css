@@ -836,7 +836,7 @@ body.night-mode {
         .message_edit_history_content {
             .highlight_text_inserted {
                 color: hsl(122, 100%, 81%);
-                background-color: hsla(120, 64%, 95%, 0.3);
+                background-color: hsla(120, 64%, 95%, 0.15);
             }
 
             .highlight_text_deleted {
