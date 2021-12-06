@@ -27,7 +27,15 @@ from zerver.data_import.user_handler import UserHandler
 from zerver.lib.emoji import name_to_codepoint
 from zerver.lib.import_realm import do_import_realm
 from zerver.lib.test_classes import ZulipTestCase
-from zerver.models import Message, Reaction, Recipient, UserProfile, get_realm, get_user
+from zerver.models import (
+    Message,
+    Reaction,
+    Recipient,
+    UserMessage,
+    UserProfile,
+    get_realm,
+    get_user,
+)
 
 
 class RocketChatImporter(ZulipTestCase):
@@ -44,7 +52,7 @@ class RocketChatImporter(ZulipTestCase):
         self.assertEqual(rocketchat_data["room"][0]["_id"], "GENERAL")
         self.assertEqual(rocketchat_data["room"][0]["name"], "general")
 
-        self.assert_length(rocketchat_data["message"], 87)
+        self.assert_length(rocketchat_data["message"], 90)
         self.assertEqual(rocketchat_data["message"][1]["msg"], "Hey everyone, how's it going??")
         self.assertEqual(rocketchat_data["message"][1]["rid"], "GENERAL")
         self.assertEqual(rocketchat_data["message"][1]["u"]["username"], "priyansh3133")
@@ -639,10 +647,10 @@ class RocketChatImporter(ZulipTestCase):
             livechat_messages=livechat_messages,
         )
 
-        self.assert_length(rocketchat_data["message"], 87)
-        self.assert_length(channel_messages, 68)
+        self.assert_length(rocketchat_data["message"], 90)
+        self.assert_length(channel_messages, 69)
         self.assert_length(private_messages, 11)
-        self.assert_length(livechat_messages, 8)
+        self.assert_length(livechat_messages, 10)
 
         self.assertIn(rocketchat_data["message"][0], channel_messages)
         self.assertIn(rocketchat_data["message"][1], channel_messages)
@@ -700,9 +708,9 @@ class RocketChatImporter(ZulipTestCase):
         )
 
         # No new message added to channel, private or livechat messages
-        self.assert_length(channel_messages, 68)
+        self.assert_length(channel_messages, 69)
         self.assert_length(private_messages, 11)
-        self.assert_length(livechat_messages, 8)
+        self.assert_length(livechat_messages, 10)
 
     def test_map_upload_id_to_upload_data(self) -> None:
         fixture_dir_name = self.fixture_file_name("", "rocketchat_fixtures")
@@ -979,12 +987,12 @@ class RocketChatImporter(ZulipTestCase):
         for message in messages:
             self.assertIsNotNone(message.rendered_content)
         # After removing user_joined, added_user, discussion_created, etc.
-        # messages. (Total messages were 66.)
-        self.assert_length(messages, 43)
+        # messages. (Total messages were 90.)
+        self.assert_length(messages, 44)
 
         stream_messages = messages.filter(recipient__type=Recipient.STREAM).order_by("date_sent")
         stream_recipients = stream_messages.values_list("recipient", flat=True)
-        self.assert_length(stream_messages, 35)
+        self.assert_length(stream_messages, 36)
         self.assert_length(set(stream_recipients), 5)
         self.assertEqual(stream_messages[0].sender.email, "priyansh3133@email.com")
         self.assertEqual(stream_messages[0].content, "Hey everyone, how's it going??")
@@ -1025,3 +1033,35 @@ class RocketChatImporter(ZulipTestCase):
             personal_messages[0].content,
             "Hey @**Hermione Granger** :grin:, how's everything going?",
         )
+
+        # Tests for starred messages and wildcard mentions
+        userprofile_harry = UserProfile.objects.get(email="harrypotter@email.com")
+        userprofile_hermione = UserProfile.objects.get(email="hermionegranger@email.com")
+        userprofile_ron = UserProfile.objects.get(email="ronweasley@email.com")
+
+        # Test starred messages are imported correctly
+        message = Message.objects.get(content__contains="welcome to the team!")
+
+        usermessage_harry = UserMessage.objects.get(message=message, user_profile=userprofile_harry)
+        usermessage_hermione = UserMessage.objects.get(
+            message=message, user_profile=userprofile_hermione
+        )
+        usermessage_ron = UserMessage.objects.get(message=message, user_profile=userprofile_ron)
+
+        # Message is starred by hermione and ron, but not harry
+        self.assertFalse(usermessage_harry.flags.starred.is_set)
+        self.assertTrue(usermessage_hermione.flags.starred.is_set)
+        self.assertTrue(usermessage_ron.flags.starred.is_set)
+
+        # Test wildcard mentions are imported correctly
+        message = Message.objects.get(content="Yo @**all**!")
+
+        usermessage_harry = UserMessage.objects.get(message=message, user_profile=userprofile_harry)
+        usermessage_hermione = UserMessage.objects.get(
+            message=message, user_profile=userprofile_hermione
+        )
+        usermessage_ron = UserMessage.objects.get(message=message, user_profile=userprofile_ron)
+
+        self.assertTrue(usermessage_harry.flags.wildcard_mentioned.is_set)
+        self.assertTrue(usermessage_hermione.flags.wildcard_mentioned.is_set)
+        self.assertTrue(usermessage_ron.flags.wildcard_mentioned.is_set)

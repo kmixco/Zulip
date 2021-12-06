@@ -440,7 +440,11 @@ def process_raw_message_batch(
     ) -> str:
         # Fix user mentions
         for user_id in mention_user_ids:
-            user = user_handler.get_user(user_id=user_id)
+            try:
+                user = user_handler.get_user(user_id=user_id)
+            except KeyError:
+                # This happens when the user mentioned is deleted.
+                continue
             rc_mention = "@{short_name}".format(**user)
             zulip_mention = "@**{full_name}**".format(**user)
             content = content.replace(rc_mention, zulip_mention)
@@ -460,6 +464,7 @@ def process_raw_message_batch(
 
     user_mention_map: Dict[int, Set[int]] = {}
     wildcard_mention_map: Dict[int, bool] = {}
+    message_starred_map: Dict[int, Set[int]] = {}
     zerver_message: List[ZerverFieldsT] = []
 
     for raw_message in raw_messages:
@@ -467,6 +472,7 @@ def process_raw_message_batch(
         mention_user_ids = raw_message["mention_user_ids"]
         user_mention_map[message_id] = mention_user_ids
         wildcard_mention_map[message_id] = raw_message["wildcard_mention"]
+        message_starred_map[message_id] = raw_message["starred_user_ids"]
 
         content = fix_mentions(
             content=raw_message["content"],
@@ -534,6 +540,7 @@ def process_raw_message_batch(
         is_pm_data=is_pm_data,
         mention_map=user_mention_map,
         wildcard_mention_map=wildcard_mention_map,
+        message_starred_map=message_starred_map,
     )
 
     message_json = dict(
@@ -604,7 +611,11 @@ def process_messages(
             usernames = reactions[react_code]["usernames"]
 
             for username in usernames:
-                rc_user_id = username_to_user_id_map[username]
+                rc_user_id = username_to_user_id_map.get(username)
+                if not rc_user_id:
+                    # The user might have been deleted (reactions by
+                    # deleted users stays in the RC database).
+                    continue
                 user_id = user_id_mapper.get(rc_user_id)
                 reactions_list.append({"name": name, "user_id": user_id})
 
@@ -613,7 +624,7 @@ def process_messages(
     def message_to_dict(message: Dict[str, Any]) -> Dict[str, Any]:
         rc_sender_id = message["u"]["_id"]
         sender_id = user_id_mapper.get(rc_sender_id)
-        content = message["msg"]
+        content = message.get("msg", "")
 
         if message.get("reactions"):
             reactions = list_reactions(message["reactions"])
@@ -657,6 +668,14 @@ def process_messages(
         message_dict["topic_name"] = get_topic_name(
             message, dsc_id_to_dsc_map, thread_id_mapper, is_pm_data
         )
+
+        # Add users who starred the message to message_dict
+        starred_user_ids = set()
+        for starred in message.get("starred", []):
+            rc_user_id = starred["_id"]
+            user_id = user_id_mapper.get(rc_user_id)
+            starred_user_ids.add(user_id)
+        message_dict["starred_user_ids"] = starred_user_ids
 
         # Add user mentions to message_dict
         mention_user_ids = set()
