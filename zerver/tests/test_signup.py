@@ -4049,7 +4049,6 @@ class UserSignUpTest(InviteUserBase):
         hamlet_in_zulip.emojiset = "twitter"
         hamlet_in_zulip.high_contrast_mode = True
         hamlet_in_zulip.enter_sends = True
-        hamlet_in_zulip.tutorial_status = UserProfile.TUTORIAL_FINISHED
         hamlet_in_zulip.save()
 
         result = self.client_post("/accounts/home/", {"email": email}, subdomain=subdomain)
@@ -4088,7 +4087,6 @@ class UserSignUpTest(InviteUserBase):
         hamlet_in_zulip.emojiset = "twitter"
         hamlet_in_zulip.high_contrast_mode = True
         hamlet_in_zulip.enter_sends = True
-        hamlet_in_zulip.tutorial_status = UserProfile.TUTORIAL_FINISHED
         hamlet_in_zulip.save()
 
         result = self.client_post("/accounts/home/", {"email": email}, subdomain=subdomain)
@@ -4127,7 +4125,6 @@ class UserSignUpTest(InviteUserBase):
         self.assertEqual(hamlet_in_lear.high_contrast_mode, True)
         self.assertEqual(hamlet_in_lear.enter_sends, True)
         self.assertEqual(hamlet_in_lear.enable_stream_audible_notifications, False)
-        self.assertEqual(hamlet_in_lear.tutorial_status, UserProfile.TUTORIAL_FINISHED)
 
         zulip_path_id = avatar_disk_path(hamlet_in_zulip)
         lear_path_id = avatar_disk_path(hamlet_in_lear)
