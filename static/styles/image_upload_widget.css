@@ -111,6 +111,7 @@
         margin: 5px 20px 0 0;
         vertical-align: top;
         border-radius: 4px;
+        height: 200px;
     }
 }
 
@@ -158,7 +159,7 @@
 
     a {
         position: relative;
-        top: 10px;
+        top: 19px;
     }
 }
 
@@ -189,7 +190,7 @@
 
 .realm-icon-section {
     float: none;
-    margin-bottom: 20px;
+    margin-bottom: 45px;
     display: inline-block;
 }
 
