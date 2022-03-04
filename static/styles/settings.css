@@ -415,6 +415,14 @@ td .button {
     .table tr:first-of-type td {
         border-top: none;
     }
+
+    .name {
+        width: 190px;
+    }
+
+    .email {
+        width: 190px;
+    }
 }
 
 .dynamic-input {
@@ -1772,10 +1780,6 @@ input[type="checkbox"] {
     }
 }
 
-#admin-user-list .last_active {
-    width: 100px;
-}
-
 .required-text {
     &:empty::after {
         content: attr(data-empty);
@@ -2038,5 +2042,14 @@ input[type="checkbox"] {
     #edit-linkifier-pattern-status,
     #edit-linkifier-format-status {
         margin-top: 10px;
+    }
+}
+
+@media (width < 840px) {
+    #admin-user-list {
+        .hide-user-id-narrow-width,
+        .hide-user-email-narrow-width {
+            display: none;
+        }
     }
 }
