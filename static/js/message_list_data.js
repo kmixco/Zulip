@@ -222,7 +222,10 @@ export class MessageListData {
         }
 
         // if no unread, return the bottom message
-        return this.last().id;
+        if (!this.empty()) {
+            return this.last().id;
+        }
+        return undefined;
     }
 
     has_unread_messages() {

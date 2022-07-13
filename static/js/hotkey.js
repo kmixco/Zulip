@@ -17,11 +17,13 @@ import * as gear_menu from "./gear_menu";
 import * as giphy from "./giphy";
 import * as hashchange from "./hashchange";
 import * as hotspots from "./hotspots";
+import {$t} from "./i18n";
 import * as lightbox from "./lightbox";
 import * as list_util from "./list_util";
 import * as message_edit from "./message_edit";
 import * as message_flags from "./message_flags";
 import * as message_lists from "./message_lists";
+import * as message_store from "./message_store";
 import * as message_view_header from "./message_view_header";
 import * as muted_topics_ui from "./muted_topics_ui";
 import * as narrow from "./narrow";
@@ -45,6 +47,44 @@ import {user_settings} from "./user_settings";
 function do_narrow_action(action) {
     action(message_lists.current.selected_id(), {trigger: "hotkey"});
     return true;
+}
+
+function handle_editing_last_sent_message() {
+    // It is necessary to check if there are unreads in the
+    // given view before editing the last sent message in the view.
+    // If the unreads in the given view are older than
+    // the last sent message in the view, using the hotkey to directly
+    // edit the last sent message will mark the unreads as read.
+
+    const last_user_msg = message_lists.current.get_last_message_sent_by_me();
+    const first_unread_msg_id = message_lists.current.first_unread_message_id();
+    let has_unreads = false;
+    if (last_user_msg && first_unread_msg_id) {
+        const first_unread_msg = message_store.get(first_unread_msg_id);
+        if (last_user_msg.id > first_unread_msg.id) {
+            has_unreads = true;
+        }
+    }
+
+    if (!has_unreads) {
+        message_edit.edit_last_sent_message();
+    } else {
+        feedback_widget.show({
+            populate(container) {
+                container.html(
+                    $t({
+                        defaultMessage:
+                            "Editing the last message you sent will mark all older messages in this view as read.",
+                    }),
+                );
+            },
+            on_undo() {
+                message_edit.edit_last_sent_message();
+            },
+            title_text: $t({defaultMessage: "Edit last sent message"}),
+            undo_button_text: $t({defaultMessage: "Edit anyways"}),
+        });
+    }
 }
 
 // For message actions and user profile menu.
@@ -672,7 +712,7 @@ export function process_hotkey(e, hotkey) {
         // we handle this in other functions.
 
         if (event_name === "left_arrow" && compose_state.focus_in_empty_compose()) {
-            message_edit.edit_last_sent_message();
+            handle_editing_last_sent_message();
             return true;
         }
 
@@ -722,7 +762,7 @@ export function process_hotkey(e, hotkey) {
             return true;
         }
 
-        message_edit.edit_last_sent_message();
+        handle_editing_last_sent_message();
         return true;
     }
 

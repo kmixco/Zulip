@@ -469,6 +469,8 @@ run_test("motion_keys", () => {
     list_util.inside_list = () => false;
 
     message_lists.current.empty = () => false;
+    message_lists.current.get_last_message_sent_by_me = () => {};
+    message_lists.current.first_unread_message_id = () => {};
     assert_mapping("down_arrow", navigate, "down");
     assert_mapping("end", navigate, "to_end");
     assert_mapping("home", navigate, "to_home");
