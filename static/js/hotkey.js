@@ -251,7 +251,11 @@ export function process_escape_key(e) {
     }
 
     if (overlays.is_active()) {
-        overlays.close_active();
+        if (!overlays.is_flatpickr_open()) {
+            overlays.close_active();
+        } else {
+            overlays.hide_flatpickr();
+        }
         return true;
     }
 

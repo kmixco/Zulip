@@ -48,6 +48,16 @@ export function drafts_open() {
     return open_overlay_name === "drafts";
 }
 
+exports.is_flatpickr_open = function () {
+    return $(".custom_user_field_value").hasClass("active");
+};
+
+exports.hide_flatpickr = function () {
+    $(".flatpickr-calendar").removeClass("open");
+    $("#account-settings").trigger("click");
+    return;
+};
+
 // To address bugs where mouse might apply to the streams/settings
 // overlays underneath an open modal within those settings UI, we add
 // this inline style to 'div.overlay.show', overriding the
