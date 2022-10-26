@@ -563,6 +563,10 @@ input[type="checkbox"] {
             font-weight: bold;
             word-break: break-all;
         }
+
+        .at-sign {
+            height: 14px;
+        }
     }
 }
 
