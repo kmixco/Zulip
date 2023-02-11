@@ -379,8 +379,22 @@ td .button {
     }
 }
 
+.user_id {
+    width: 15px;
+}
+
+@media only screen and (max-width: 900px) {
+    .last_active {
+        display: none;
+    }
+}
+
+.email-col {
+    min-width: 110px;
+}
+
 .user_role {
-    min-width: 95px;
+    min-width: 100px;
 }
 
 .button,
