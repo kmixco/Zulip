@@ -52,6 +52,7 @@ no_implicit_reexport = false
 module = [
     "ahocorasick.*",
     "aioapns.*", # https://github.com/Fatal1ty/aioapns/issues/33
+    "aiosmtpd.*",
     "bitfield.*",
     "bmemcached.*",
     "cairosvg.*", # https://github.com/Kozea/CairoSVG/issues/373
