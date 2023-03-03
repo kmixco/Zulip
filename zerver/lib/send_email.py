@@ -29,6 +29,7 @@ from django.utils.translation import override as override_language
 from confirmation.models import generate_key, one_click_unsubscribe_link
 from scripts.setup.inline_email_css import inline_template
 from zerver.lib.logging_util import log_to_file
+from zerver.lib.queue import queue_json_publish
 from zerver.models import EMAIL_TYPES, Realm, ScheduledEmail, UserProfile, get_user_profile_by_id
 from zproject.email_backends import EmailLogBackEnd, get_forward_address
 
@@ -472,7 +473,7 @@ def handle_send_email_format_changes(job: Dict[str, Any]) -> None:
         del job["to_user_id"]
 
 
-def deliver_scheduled_emails(email: ScheduledEmail) -> None:
+def queue_scheduled_emails(email: ScheduledEmail) -> None:
     data = orjson.loads(email.data)
     user_ids = list(email.users.values_list("id", flat=True))
     if not user_ids and not email.address:
@@ -486,8 +487,7 @@ def deliver_scheduled_emails(email: ScheduledEmail) -> None:
         data["to_user_ids"] = user_ids
     if email.address is not None:
         data["to_emails"] = [email.address]
-    handle_send_email_format_changes(data)
-    send_email(**data)
+    queue_json_publish("deferred_email_senders", data)
     email.delete()
 
 

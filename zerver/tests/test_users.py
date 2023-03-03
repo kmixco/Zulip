@@ -32,7 +32,7 @@ from zerver.lib.events import do_events_register
 from zerver.lib.exceptions import JsonableError
 from zerver.lib.send_email import (
     clear_scheduled_emails,
-    deliver_scheduled_emails,
+    queue_scheduled_emails,
     send_future_email,
 )
 from zerver.lib.stream_topic import StreamTopicTarget
@@ -1673,7 +1673,9 @@ class ActivateTest(ZulipTestCase):
         )
         self.assertEqual(ScheduledEmail.objects.count(), 1)
         email = ScheduledEmail.objects.all().first()
-        deliver_scheduled_emails(assert_is_not_none(email))
+        # This will actually do the email-sending because we don't use
+        # RabbitMQ in tests
+        queue_scheduled_emails(assert_is_not_none(email))
         from django.core.mail import outbox
 
         self.assert_length(outbox, 1)
@@ -1703,7 +1705,9 @@ class ActivateTest(ZulipTestCase):
         email.users.remove(*to_user_ids)
 
         with self.assertLogs("zulip.send_email", level="INFO") as info_log:
-            deliver_scheduled_emails(email)
+            # This will actually do the email-sending because we don't use
+            # RabbitMQ in tests
+            queue_scheduled_emails(email)
         from django.core.mail import outbox
 
         self.assert_length(outbox, 0)

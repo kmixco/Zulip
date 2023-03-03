@@ -116,6 +116,7 @@ class zulip::app_frontend_base {
     'error_reports',
     'invites',
     'email_senders',
+    'deferred_email_senders',
     'missedmessage_emails',
     'missedmessage_mobile_notifications',
     'outgoing_webhooks',

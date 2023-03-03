@@ -721,7 +721,6 @@ class MissedMessageWorker(QueueProcessingWorker):
         super().stop()
 
 
-@assign_queue("email_senders")
 class EmailSendingWorker(LoopQueueProcessingWorker):
     def __init__(self) -> None:
         super().__init__()
@@ -748,6 +747,16 @@ class EmailSendingWorker(LoopQueueProcessingWorker):
             self.connection.close()
         finally:
             super().stop()
+
+
+@assign_queue("email_senders")
+class ImmediateEmailSenderWorker(EmailSendingWorker):
+    pass
+
+
+@assign_queue("deferred_email_senders")
+class DeferredEmailSenderWorker(EmailSendingWorker):
+    pass
 
 
 @assign_queue("missedmessage_mobile_notifications")

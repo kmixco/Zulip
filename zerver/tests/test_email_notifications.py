@@ -26,7 +26,7 @@ from zerver.lib.email_notifications import (
     handle_missedmessage_emails,
     relative_to_full_url,
 )
-from zerver.lib.send_email import FromAddress, deliver_scheduled_emails, send_custom_email
+from zerver.lib.send_email import FromAddress, queue_scheduled_emails, send_custom_email
 from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.user_groups import create_user_group
 from zerver.models import ScheduledEmail, UserMessage, UserProfile, get_realm, get_stream
@@ -351,7 +351,9 @@ class TestFollowupEmails(ZulipTestCase):
             orjson.loads(scheduled_email.data)["template_prefix"], "zerver/emails/followup_day1"
         )
 
-        deliver_scheduled_emails(scheduled_email)
+        # This will actually do the email-sending because we don't use
+        # RabbitMQ in tests
+        queue_scheduled_emails(scheduled_email)
         from django.core.mail import outbox
 
         self.assert_length(outbox, 1)
@@ -373,7 +375,9 @@ class TestFollowupEmails(ZulipTestCase):
             orjson.loads(scheduled_email.data)["template_prefix"], "zerver/emails/followup_day1"
         )
 
-        deliver_scheduled_emails(scheduled_email)
+        # This will actually do the email-sending because we don't use
+        # RabbitMQ in tests
+        queue_scheduled_emails(scheduled_email)
         from django.core.mail import outbox
 
         self.assert_length(outbox, 1)
