@@ -58,15 +58,9 @@ from zerver.lib.bot_lib import EmbeddedBotHandler, EmbeddedBotQuitError, get_bot
 from zerver.lib.context_managers import lockfile
 from zerver.lib.db import reset_queries
 from zerver.lib.digest import bulk_handle_digest_email
-from zerver.lib.email_mirror import (
-    decode_stream_email_address,
-    is_missed_message_address,
-    rate_limit_mirror_by_realm,
-)
 from zerver.lib.email_mirror import process_message as mirror_email
 from zerver.lib.email_notifications import handle_missedmessage_emails
 from zerver.lib.error_notify import do_report_error
-from zerver.lib.exceptions import RateLimitedError
 from zerver.lib.export import export_realm_wrapper
 from zerver.lib.outgoing_webhook import do_rest_call, get_outgoing_webhook_service_handler
 from zerver.lib.push_notifications import (
@@ -817,20 +811,6 @@ class MirrorWorker(QueueProcessingWorker):
             policy=email.policy.default,
         )
         assert isinstance(msg, EmailMessage)  # https://github.com/python/typeshed/issues/2417
-        if not is_missed_message_address(rcpt_to):
-            # Missed message addresses are one-time use, so we don't need
-            # to worry about emails to them resulting in message spam.
-            recipient_realm = decode_stream_email_address(rcpt_to)[0].realm
-            try:
-                rate_limit_mirror_by_realm(recipient_realm)
-            except RateLimitedError:
-                logger.warning(
-                    "MirrorWorker: Rejecting an email from: %s to realm: %s - rate limited.",
-                    msg["From"],
-                    recipient_realm.subdomain,
-                )
-                return
-
         mirror_email(msg, rcpt_to=rcpt_to)
 
 
