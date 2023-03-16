@@ -550,7 +550,7 @@ class WorkerTest(ZulipTestCase):
             fake_client.enqueue(queue_name, event)
 
         with simulated_queue_client(fake_client):
-            worker = queue_processors.EmailSendingWorker()
+            worker = queue_processors.ImmediateEmailSenderWorker()
             worker.setup()
             with patch(
                 "zerver.lib.send_email.build_email", side_effect=EmailNotDeliveredError
@@ -767,7 +767,7 @@ class WorkerTest(ZulipTestCase):
             queue_class.queue_name
             for base in [QueueProcessingWorker, EmailSendingWorker, LoopQueueProcessingWorker]
             for queue_class in base.__subclasses__()
-            if not isabstract(queue_class)
+            if not isabstract(queue_class) and hasattr(queue_class, "queue_name")
         }
 
         # Verify that the set of active worker queues equals the set
