@@ -1283,7 +1283,7 @@ td.pointer {
 .recipient_row_date {
     color: var(--color-date);
     font-size: calc(12em / 14);
-    padding: 0 10px;
+    margin: 0 10px;
     text-align: right;
     display: flex;
     align-items: center;
@@ -1293,6 +1293,7 @@ td.pointer {
     letter-spacing: 0.04em;
     text-transform: uppercase;
     padding-top: 1px;
+    cursor: pointer;
 
     /* Display the date when unchanged only for sticky headers. */
     &.recipient_row_date_unchanged {
@@ -2638,6 +2639,10 @@ select.invite-as {
         display: none;
     }
 
+    .flatpickr-month {
+        border-radius: 5px 5px 0 0;
+    }
+
     .flatpickr-time-separator {
         position: relative;
         left: 5px;
@@ -2653,6 +2658,13 @@ select.invite-as {
         background-color: hsl(213deg 90% 65%);
         font-size: 18px;
         font-weight: 600;
+    }
+
+    .shortcut-buttons-flatpickr-wrapper {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px;
     }
 
     @media (width < $md_min) {

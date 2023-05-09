@@ -1,4 +1,6 @@
+import {formatISO} from "date-fns";
 import $ from "jquery";
+import ShortcutButtonsPlugin from "shortcut-buttons-flatpickr";
 import tippy from "tippy.js";
 import WinChan from "winchan";
 
@@ -17,7 +19,9 @@ import * as compose_state from "./compose_state";
 import {media_breakpoints_num} from "./css_variables";
 import * as dark_theme from "./dark_theme";
 import * as emoji_picker from "./emoji_picker";
+import * as flatpickr from "./flatpickr";
 import * as hash_util from "./hash_util";
+import {$t} from "./i18n";
 import * as message_edit from "./message_edit";
 import * as message_flags from "./message_flags";
 import * as message_lists from "./message_lists";
@@ -419,6 +423,55 @@ export function initialize() {
             $(e.target),
             user_topics.all_visibility_policies.INHERIT,
         );
+    });
+
+    // JUMP TO DATE
+
+    function on_message_timestamp_selection(date) {
+        const hash = window.location.hash.split("/");
+        const operators = hash_util.parse_narrow(hash);
+        narrow.activate(operators, {trigger: "date", anchor_date: date});
+    }
+
+    $("body").on("click", ".message_header .recipient_row_date", (e) => {
+        e.stopPropagation();
+        const rendered_date = $(e.target).attr("data-tippy-content");
+        const date = new Date(rendered_date);
+        flatpickr.show_flatpickr(e.target, on_message_timestamp_selection, date, {
+            disable: [
+                function (date) {
+                    return date > new Date();
+                },
+            ],
+            plugins: [
+                new ShortcutButtonsPlugin({
+                    button: [
+                        {
+                            label: $t({defaultMessage: "Scroll to top"}),
+                            attributes: {
+                                class: "animated-purple-button",
+                            },
+                        },
+                    ],
+                    label: "or",
+                    onClick(index, fp) {
+                        // +0 for beginning of the time.
+                        on_message_timestamp_selection(formatISO(new Date(+0)));
+                        fp.close();
+                        fp.destroy();
+                    },
+                }),
+            ],
+            onChange(selectedDates, date, fp) {
+                on_message_timestamp_selection(date);
+                fp.close();
+                // We need to wait for the flatpickr to close before destroying it.
+                // Used to not break anything when closing using enter key.
+                setTimeout(() => fp.destroy(), 100);
+            },
+            position: "below",
+            enableTime: false,
+        });
     });
 
     // RECIPIENT BARS

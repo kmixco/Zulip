@@ -388,6 +388,13 @@ export function initialize() {
     });
 
     message_list_tooltip(".recipient_row_date > span", {
+        appendTo: () => document.body,
+        onShow(instance) {
+            const $time_elem = $(instance.reference);
+            const $message = $("<span>").text($time_elem.attr("data-tippy-content"));
+            $message.append($("<br>"), $("<span>").text("(Jump to any date)"));
+            instance.setContent($message[0]);
+        },
         onHidden(instance) {
             instance.destroy();
         },
