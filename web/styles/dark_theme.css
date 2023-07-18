@@ -193,7 +193,6 @@
     }
 
     #navbar-middle .column-middle-inner,
-    #userlist-toggle-button,
     .header,
     #message_view_header {
         background-color: var(--color-background-navbar);
@@ -1540,6 +1539,79 @@
                 .save-discard-widget-button-text {
                     color: hsl(0deg 0% 100%);
                 }
+            }
+        }
+    }
+
+    .user-info-popover-header {
+        background-color: var(--bg-popover-dark);
+
+        .full-name {
+            color: hsl(0deg 0% 100%);
+        }
+
+        .user-type {
+            color: hsl(0deg 0% 50%);
+        }
+    }
+
+    .popover-menu {
+        background-color: var(--bg-popover-dark);
+
+        .list {
+            border-color: hsl(0deg 0% 0% / 40%);
+        }
+
+        .text-item,
+        .user_popover_email a {
+            color: hsl(0deg 0% 50% / 100%);
+        }
+
+        .link-item {
+            & a {
+                color: hsl(0deg 0% 100% / 80%);
+
+                &:hover,
+                &:focus {
+                    background: hsl(0deg 0% 100% / 5%);
+                }
+
+                &:active {
+                    background: hsl(0deg 0% 100% / 10%);
+                }
+            }
+        }
+    }
+
+    #personal-menu-dropdown {
+        background-color: var(--bg-popover-dark);
+    }
+
+    .personal-menu-tippy > .tippy-box > .tippy-arrow::after {
+        background-color: var(--bg-popover-dark);
+    }
+
+    .keyboard-shortcut-option {
+        & span.tooltip-hotkey-hint {
+            color: hsl(225deg 100% 84%);
+            border-color: hsl(225deg 100% 84%);
+        }
+    }
+
+    .slider-container {
+        .slider {
+            background-color: hsl(0deg 0% 0% / 30%);
+        }
+
+        .selected-option {
+            background-color: hsl(0deg 0% 17% / 50%);
+            border: 1px solid hsl(0deg 0% 100% / 12%);
+        }
+
+        .slider-option {
+            &:hover:not(.clicked) {
+                background-color: hsl(0deg 0% 17% / 17%);
+                border: 1px solid hsl(0deg 0% 100% / 12%);
             }
         }
     }
