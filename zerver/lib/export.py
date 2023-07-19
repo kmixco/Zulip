@@ -2003,6 +2003,7 @@ def do_export_realm(
 
     do_write_stats_file_for_realm_export(output_dir)
 
+    logging.info("Compressing tarball...")
     tarball_path = output_dir.rstrip("/") + ".tar.gz"
     subprocess.check_call(
         [
@@ -2386,9 +2387,6 @@ def export_realm_wrapper(
     if not upload:
         return None
 
-    # We upload to the `avatars` bucket because that's world-readable
-    # without additional configuration.  We'll likely want to change
-    # that in the future.
     print("Uploading export tarball...")
     public_url = zerver.lib.upload.upload_backend.upload_export_tarball(
         realm, tarball_path, percent_callback=percent_callback
