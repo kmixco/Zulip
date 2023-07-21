@@ -40,7 +40,13 @@ from zerver.lib.test_helpers import (
     read_test_image_file,
 )
 from zerver.lib.upload import delete_message_attachment, upload_message_attachment
-from zerver.lib.upload.base import BadImageError, ZulipUploadBackend, resize_emoji, sanitize_name
+from zerver.lib.upload.base import (
+    BadImageError,
+    ZulipUploadBackend,
+    create_attachment,
+    resize_emoji,
+    sanitize_name,
+)
 from zerver.lib.upload.local import LocalUploadBackend
 from zerver.lib.upload.s3 import S3UploadBackend
 from zerver.lib.users import get_api_key
@@ -1015,6 +1021,28 @@ class FileUploadTest(UploadSerializeMixin, ZulipTestCase):
         )
         check_xsend_links("áéБД.pdf", "%C3%A1%C3%A9%D0%91%D0%94.pdf")
         check_xsend_links("zulip", "zulip", 'filename="zulip"')
+
+    def test_get_path_using_file_id(self) -> None:
+        hamlet = self.example_user("hamlet")
+        self.login_user(hamlet)
+        file_id = "e4b4acc5ddb8675d3af4e75a1a095bd7"
+        result = self.client_get(f"/json/user_uploads/{file_id}")
+        self.assert_json_error(result, "File not found.")
+
+        realm = get_realm("zulip")
+        path = "2/2e/zulip.txt"
+        create_attachment(
+            "zulip.txt",
+            path,
+            hamlet,
+            realm,
+            10000,
+            file_id,
+        )
+
+        result = self.client_get(f"/json/user_uploads/{file_id}")
+        response_dict = self.assert_json_success(result)
+        self.assertEqual(f"/user_uploads/{path}", response_dict["url"])
 
 
 class AvatarTest(UploadSerializeMixin, ZulipTestCase):

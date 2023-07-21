@@ -20,6 +20,11 @@ format used by the Zulip server that they are interacting with.
 
 ## Changes in Zulip 8.0
 
+**Feature level 199**
+
+* ['GET /user_uploads/{file_id_str}'](/api/get-tus-file-path):
+  Add an endpoint to get path URL of a file with tus_file_id.
+
 **Feature level 198**
 
 * [`GET /events`](/api/get-events), [`POST /register`](/api/register-queue),

@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Set, TypeVar
 from typing_extensions import ParamSpec
 from zulip import Client
 
+from zerver.lib.upload.base import create_attachment
 from zerver.models import get_realm, get_user
 from zerver.openapi.openapi import validate_against_openapi_schema
 
@@ -1287,6 +1288,19 @@ def upload_file(client: Client) -> None:
     validate_against_openapi_schema(result, "/user_uploads", "post", "200")
 
 
+@openapi_test_function("/user_uploads/{file_id_str}:get")
+def get_path_using_file_id(client: Client) -> None:
+    realm = get_realm("zulip")
+    user = get_user("iago@zulip.com", realm)
+    file_id = "e4b4acc5ddb8675d3af4e75a1a095bd7"
+    path = f"2/2e/{file_id}/zulip.txt"
+    create_attachment("zulip.txt", path, user, realm, 100, file_id)
+    # {code_example|start}
+    result = client.call_endpoint(f"/user_uploads/{file_id}", method="GET")
+    # {code_example|end}
+    validate_against_openapi_schema(result, "/user_uploads/{file_id]", "get", "200")
+
+
 @openapi_test_function("/users/me/{stream_id}/topics:get")
 def get_stream_topics(client: Client, stream_id: int) -> None:
     # {code_example|start}
@@ -1539,6 +1553,7 @@ def test_messages(client: Client, nonadmin_client: Client) -> None:
     get_messages(client)
     check_messages_match_narrow(client)
     get_message_history(client, message_id)
+    get_path_using_file_id(client)
     get_read_receipts(client, message_id)
     delete_message(client, message_id)
     mark_all_as_read(client)
