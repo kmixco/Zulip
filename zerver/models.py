@@ -3516,6 +3516,7 @@ class AbstractAttachment(models.Model):
     # If the path of a file is http://localhost:9991/user_uploads/a/b/abc/temp_file.py
     # then its path_id will be a/b/abc/temp_file.py.
     path_id = models.TextField(db_index=True, unique=True)
+    tus_file_id = models.CharField(max_length=60, db_index=True, unique=True, null=True)
     owner = models.ForeignKey(UserProfile, on_delete=CASCADE)
     realm = models.ForeignKey(Realm, on_delete=CASCADE)
 
