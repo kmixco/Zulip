@@ -500,10 +500,9 @@ export class Filter {
         return true;
     }
 
-    calc_can_mark_messages_read() {
-        // Arguably this should match supports_collapsing_recipients.
-        // We may want to standardize on that in the future.  (At
-        // present, this function does not allow combining valid filters).
+    // these filters work for both
+    // calc_can_mark_messages_read and is_common_narrow
+    core_filters() {
         const term_types = this.sorted_term_types();
 
         if (_.isEqual(term_types, ["stream", "topic"])) {
@@ -513,11 +512,6 @@ export class Filter {
         if (_.isEqual(term_types, ["dm"])) {
             return true;
         }
-
-        // TODO: Some users really hate it when Zulip marks messages as read
-        // in interleaved views, so we will eventually have a setting
-        // that early-exits before the subsequent checks.
-        // (in which case, is_common_narrow would also need to be modified)
 
         if (_.isEqual(term_types, ["stream"])) {
             return true;
@@ -547,6 +541,48 @@ export class Filter {
         return false;
     }
 
+    calc_can_mark_messages_read() {
+        // Arguably this should match supports_collapsing_recipients.
+        // We may want to standardize on that in the future.  (At
+        // present, this function does not allow combining valid filters).
+
+        if (this.core_filters()) {
+            return true;
+        }
+
+        const term_types = this.sorted_term_types();
+
+        // TODO: Some users really hate it when Zulip marks messages as read
+        // in interleaved views, so we will eventually have a setting
+        // that early-exits before the subsequent checks.
+        // (in which case, is_common_narrow would also need to be modified)
+
+        // -is:dm excludes direct messages from all messages
+        if (_.isEqual(term_types, ["not-is-dm"])) {
+            return true;
+        }
+
+        // Excluding direct messages from stream and topic does not
+        // accomplish anything, still adding code to be consistent with our design.
+
+        if (_.isEqual(term_types, ["stream", "not-is-dm"])) {
+            return true;
+        }
+
+        if (_.isEqual(term_types, ["topic", "not-is-dm"])) {
+            return true;
+        }
+
+        // Excluding direct messages from stream and topic does not
+        // accomplish anything, but we are still letting user mark
+        // mark messages as read to be consistent with our design.
+        if (_.isEqual(term_types, ["stream", "topic", "not-is-dm"])) {
+            return true;
+        }
+
+        return false;
+    }
+
     can_mark_messages_read() {
         if (this._can_mark_messages_read === undefined) {
             this._can_mark_messages_read = this.calc_can_mark_messages_read();
@@ -560,16 +596,12 @@ export class Filter {
     // https://paper.dropbox.com/doc/Navbar-behavior-table--AvnMKN4ogj3k2YF5jTbOiVv_AQ-cNOGtu7kSdtnKBizKXJge
     // common narrows show a narrow description and allow the user to
     // close search bar UI and show the narrow description UI.
-    //
-    // TODO: We likely will want to rewrite this to not piggy-back on
-    // can_mark_messages_read, since that might gain some more complex behavior
-    // with near: narrows.
     is_common_narrow() {
         // can_mark_messages_read tests the following filters:
         // stream, stream + topic,
         // is:dm, dm,
         // is:mentioned, is:resolved
-        if (this.can_mark_messages_read()) {
+        if (this.core_filters()) {
             return true;
         }
         // that leaves us with checking:
