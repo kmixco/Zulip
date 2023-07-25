@@ -1,14 +1,14 @@
 import {Uppy} from "@uppy/core";
-import XHRUpload from "@uppy/xhr-upload";
+import Tus from "@uppy/tus";
 import $ from "jquery";
 
 import render_upload_banner from "../templates/compose_banner/upload_banner.hbs";
 
+import * as channel from "./channel";
 import * as compose_actions from "./compose_actions";
 import * as compose_banner from "./compose_banner";
 import * as compose_state from "./compose_state";
 import * as compose_ui from "./compose_ui";
-import {csrf_token} from "./csrf";
 import {$t} from "./i18n";
 import {page_params} from "./page_params";
 
@@ -256,15 +256,14 @@ export function setup_upload(config) {
             },
         },
     });
-    uppy.setMeta({
-        csrfmiddlewaretoken: csrf_token,
-    });
-    uppy.use(XHRUpload, {
-        endpoint: "/json/user_uploads",
+    uppy.use(Tus, {
+        endpoint: "/chunk-upload",
         formData: true,
         fieldName: "file",
         // Number of concurrent uploads
         limit: 5,
+        retryDelays: [0, 1000, 3000, 5000],
+        chunkSize: 25000000,
         locale: {
             strings: {
                 timedOut: $t({
@@ -332,33 +331,43 @@ export function setup_upload(config) {
     });
 
     uppy.on("upload-success", (file, response) => {
-        const url = response.body.uri;
-        if (url === undefined) {
+        const upload_url = response.uploadURL;
+        if (upload_url === undefined) {
             return;
         }
-        const split_url = url.split("/");
-        const filename = split_url.at(-1);
-        const filename_url = "[" + filename + "](" + url + ")";
-        const $text_area = get_item("textarea", config);
-        const replacement_successful = compose_ui.replace_syntax(
-            get_translated_status(file),
-            filename_url,
-            $text_area,
-        );
-        if (!replacement_successful) {
-            compose_ui.insert_syntax_and_focus(filename_url, $text_area);
-        }
+        const upload_id = upload_url.split("/").at(-1).split("+").at(0);
+        channel.get({
+            url: `json/user_uploads/${upload_id}`,
+            success(data) {
+                const url = data.url;
+                const split_url = url.split("/");
+                const filename = split_url.at(-1);
+                const filename_url = "[" + filename + "](" + url + ")";
+                const $text_area = get_item("textarea", config);
+                const replacement_successful = compose_ui.replace_syntax(
+                    get_translated_status(file),
+                    filename_url,
+                    $text_area,
+                );
+                if (!replacement_successful) {
+                    compose_ui.insert_syntax_and_focus(filename_url, $text_area);
+                }
 
-        compose_ui.autosize_textarea($text_area);
+                compose_ui.autosize_textarea($text_area);
 
-        // The uploaded files should be removed since uppy doesn't allow files in the store
-        // to be re-uploaded again.
-        uppy.removeFile(file.id);
-        // Hide upload status after waiting 100ms after the 1s transition to 100%
-        // so that the user can see the progress bar at 100%.
-        setTimeout(() => {
-            hide_upload_banner(uppy, config, file.id);
-        }, 1100);
+                // The uploaded files should be removed since uppy doesn't allow files in the store
+                // to be re-uploaded again.
+                uppy.removeFile(file.id);
+                // Hide upload status after waiting 100ms after the 1s transition to 100%
+                // so that the user can see the progress bar at 100%.
+                setTimeout(() => {
+                    hide_upload_banner(uppy, config, file.id);
+                }, 1100);
+            },
+            error() {
+                return;
+            },
+        });
     });
 
     uppy.on("info-visible", () => {
