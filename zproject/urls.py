@@ -165,6 +165,7 @@ from zerver.views.streams import (
 )
 from zerver.views.submessage import process_submessage
 from zerver.views.thumbnail import backend_serve_thumbnail
+from zerver.views.tusd import handle_tusd_hook
 from zerver.views.tutorial import set_tutorial_status
 from zerver.views.typing import send_notification_backend
 from zerver.views.unsubscribe import email_unsubscribe
@@ -744,6 +745,11 @@ urls += [
     # asynchronous Tornado behavior.
     path("notify_tornado", notify),
     path("api/v1/events/internal", get_events_internal),
+]
+
+# tusd views
+urls += [
+    rest_path("tusd/hooks", POST=(handle_tusd_hook, {"override_api_url_scheme"})),
 ]
 
 # Python Social Auth

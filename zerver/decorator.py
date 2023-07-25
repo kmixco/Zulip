@@ -1,5 +1,6 @@
 import base64
 import datetime
+import hmac
 import logging
 import urllib
 from functools import wraps
@@ -264,10 +265,21 @@ def validate_account_and_subdomain(request: HttpRequest, user_profile: UserProfi
 
     # Either the subdomain matches, or we're accessing Tornado from
     # and to localhost (aka spoofing a request as the user).
-    if not user_matches_subdomain(get_subdomain(request), user_profile) and not (
-        settings.RUNNING_INSIDE_TORNADO
-        and request.META["SERVER_NAME"] == "127.0.0.1"
-        and request.META["REMOTE_ADDR"] == "127.0.0.1"
+    remote_addr = request.META.get("REMOTE_ADDR", None)
+    server_name = request.META.get("SERVER_NAME", None)
+
+    if (
+        not user_matches_subdomain(get_subdomain(request), user_profile)
+        and not (
+            settings.RUNNING_INSIDE_TORNADO
+            and remote_addr == "127.0.0.1"
+            and server_name == "127.0.0.1"
+        )
+        and not (
+            # For tusd hook requests.
+            remote_addr == "127.0.0.1"
+            and server_name == "localhost"
+        )
     ):
         logging.warning(
             "User %s (%s) attempted to access API on wrong subdomain (%s)",
@@ -903,8 +915,15 @@ def authenticated_json_view(
 # secret, and also the originating IP (for now).
 @has_request_variables
 def authenticate_notify(request: HttpRequest, secret: str = REQ("secret")) -> bool:
-    return is_local_addr(request.META["REMOTE_ADDR"]) and constant_time_compare(
-        secret, settings.SHARED_SECRET
+    # The secret either will be raw SHARED_SECRET or it will be a HMAC computed using SHARED_SECRET as both key and data
+    shared_secret: str = settings.SHARED_SECRET
+    shared_secret_bytes = shared_secret.encode("utf-8")
+    computed_hmac = hmac.new(
+        shared_secret_bytes, shared_secret_bytes, digestmod="sha256"
+    ).hexdigest()
+    return is_local_addr(request.META["REMOTE_ADDR"]) and (
+        constant_time_compare(secret, settings.SHARED_SECRET)
+        or constant_time_compare(secret, computed_hmac)
     )
 
 

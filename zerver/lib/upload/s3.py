@@ -13,6 +13,7 @@ from botocore.client import Config
 from django.conf import settings
 from mypy_boto3_s3.client import S3Client
 from mypy_boto3_s3.service_resource import Bucket, Object
+from mypy_boto3_s3.type_defs import CopySourceTypeDef
 
 from zerver.lib.avatar_hash import user_avatar_path
 from zerver.lib.upload.base import (
@@ -146,6 +147,13 @@ class S3UploadBackend(ZulipUploadBackend):
                 config=config,
             )
         return self._boto_client
+
+    def move_file(self, old_key: str, new_key: str, bucket: Optional[Bucket] = None) -> None:
+        if bucket is None:
+            bucket = self.uploads_bucket
+        copy_source: CopySourceTypeDef = {"Bucket": bucket.name, "Key": old_key}
+        bucket.copy(copy_source, new_key)
+        self.delete_file_from_s3(old_key, self.uploads_bucket)
 
     def delete_file_from_s3(self, path_id: str, bucket: Bucket) -> bool:
         key = bucket.Object(path_id)

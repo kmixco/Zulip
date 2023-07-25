@@ -276,6 +276,9 @@ class ZulipUploadBackend:
     def delete_export_tarball(self, export_path: str) -> Optional[str]:
         raise NotImplementedError
 
+    def move_file(self, old_path: str, new_path: str) -> None:
+        raise NotImplementedError
+
 
 def create_attachment(
     file_name: str,
