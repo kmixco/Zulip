@@ -1,16 +1,17 @@
-from typing import Dict, List, Optional, Set, Tuple, TypedDict
-
-from django_stubs_ext import ValuesQuerySet
+from typing import Dict, List, Optional, Set, Tuple, TypedDict, cast
 
 from zerver.lib.cache import (
-    bulk_cached_fetch,
     cache_with_key,
     display_recipient_cache_key,
-    generic_bulk_cached_fetch,
-    single_user_display_recipient_cache_key,
 )
 from zerver.lib.types import DisplayRecipientT, UserDisplayRecipient
-from zerver.models import Recipient, Stream, UserProfile, bulk_get_huddle_user_ids
+from zerver.models import (
+    Recipient,
+    Stream,
+    UserProfile,
+    bulk_get_huddle_user_ids,
+    get_column_values_from_single_table_using_id_lookup,
+)
 
 display_recipient_fields = [
     "id",
@@ -58,22 +59,18 @@ def get_display_recipient_remote_cache(
     return list(user_profile_list)
 
 
-def user_dict_id_fetcher(user_dict: UserDisplayRecipient) -> int:
-    return user_dict["id"]
-
-
-def bulk_fetch_single_user_display_recipients(uids: List[int]) -> Dict[int, UserDisplayRecipient]:
-    return bulk_cached_fetch(
-        # Use a separate cache key to protect us from conflicts with
-        # the get_user_profile_by_id cache.
-        # (Since we fetch only several fields here)
-        cache_key_function=single_user_display_recipient_cache_key,
-        query_function=lambda ids: list(
-            UserProfile.objects.filter(id__in=ids).values(*display_recipient_fields)
-        ),
-        object_ids=uids,
-        id_fetcher=user_dict_id_fetcher,
+def bulk_fetch_single_user_display_recipients(
+    *, user_ids: List[int]
+) -> Dict[int, UserDisplayRecipient]:
+    db_rows = get_column_values_from_single_table_using_id_lookup(
+        columns=display_recipient_fields,
+        table="zerver_userprofile",
+        id_field="id",
+        ids=user_ids,
+        order_by_columns=["id"],
     )
+    rows = cast(List[UserDisplayRecipient], db_rows)
+    return {row["id"]: row for row in rows}
 
 
 def bulk_fetch_stream_names(
@@ -81,20 +78,23 @@ def bulk_fetch_stream_names(
 ) -> Dict[int, str]:
     """
     Takes set of tuples of the form (recipient_id, recipient_type, recipient_type_id)
-    Returns dict mapping recipient_id to corresponding display_recipient
+    Returns dict mapping recipient_id to corresponding stream name
     """
 
     if len(recipient_tuples) == 0:
         return {}
 
-    recipient_id_to_stream_id = {tup[0]: tup[2] for tup in recipient_tuples}
-    recipient_ids = [tup[0] for tup in recipient_tuples]
+    stream_ids = [tup[2] for tup in recipient_tuples]
 
-    def get_tiny_stream_rows(
-        recipient_ids: List[int],
-    ) -> ValuesQuerySet[Stream, TinyStreamResult]:
-        stream_ids = [recipient_id_to_stream_id[recipient_id] for recipient_id in recipient_ids]
-        return Stream.objects.filter(id__in=stream_ids).values("recipient_id", "name")
+    db_rows = get_column_values_from_single_table_using_id_lookup(
+        columns=["recipient_id", "name"],
+        table="zerver_stream",
+        id_field="id",
+        ids=stream_ids,
+        order_by_columns=["recipient_id"],
+    )
+
+    rows = cast(List[TinyStreamResult], db_rows)
 
     def get_recipient_id(row: TinyStreamResult) -> int:
         return row["recipient_id"]
@@ -102,18 +102,7 @@ def bulk_fetch_stream_names(
     def get_name(row: TinyStreamResult) -> str:
         return row["name"]
 
-    # ItemT = TinyStreamResult, CacheItemT = str (name), ObjKT = int (recipient_id)
-    stream_display_recipients: Dict[int, str] = generic_bulk_cached_fetch(
-        cache_key_function=display_recipient_cache_key,
-        query_function=get_tiny_stream_rows,
-        object_ids=recipient_ids,
-        id_fetcher=get_recipient_id,
-        cache_transformer=get_name,
-        setter=lambda obj: obj,
-        extractor=lambda obj: obj,
-    )
-
-    return stream_display_recipients
+    return {get_recipient_id(row): get_name(row) for row in rows}
 
 
 def bulk_fetch_user_display_recipients(
@@ -147,7 +136,9 @@ def bulk_fetch_user_display_recipients(
         user_ids_to_fetch |= huddle_user_ids
 
     # Fetch the needed user dictionaries.
-    user_display_recipients = bulk_fetch_single_user_display_recipients(list(user_ids_to_fetch))
+    user_display_recipients = bulk_fetch_single_user_display_recipients(
+        user_ids=list(user_ids_to_fetch),
+    )
 
     result = {}
 
