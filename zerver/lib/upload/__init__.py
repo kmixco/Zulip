@@ -227,6 +227,14 @@ def handle_reupload_emojis_event(realm: Realm, logger: logging.Logger) -> None: 
         realm_emoji.save(update_fields=["is_animated"])
 
 
+def move_file(old_path: str, new_path: str) -> None:
+    return upload_backend.move_file(old_path, new_path)
+
+
+def generate_message_upload_path(realm_id: str, uploaded_file_name: str) -> str:
+    return upload_backend.generate_message_upload_path(realm_id, uploaded_file_name)
+
+
 # Export tarballs
 
 

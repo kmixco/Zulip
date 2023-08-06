@@ -100,6 +100,7 @@ proxy_port = base_port
 django_port = base_port + 1
 tornado_port = base_port + 2
 webpack_port = base_port + 3
+tusd_port = base_port + 4
 
 os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -161,6 +162,12 @@ def server_processes() -> List[List[str]]:
             "--quiet",
         ],
         ["./manage.py", "deliver_scheduled_messages"],
+        [
+            "./manage.py",
+            "runtusd",
+            f"{tusd_port}",
+            f"http://localhost:{django_port}/tusd/hooks",
+        ],
     ]
 
     # NORMAL (but slower) operation:
@@ -295,6 +302,10 @@ class TornadoHandler(BaseHandler):
     target_port = tornado_port
 
 
+class TusdHandler(BaseHandler):
+    target_port = tusd_port
+
+
 class Application(web.Application):
     def __init__(self, enable_logging: bool = False) -> None:
         super().__init__(
@@ -302,6 +313,7 @@ class Application(web.Application):
                 (r"/json/events.*", TornadoHandler),
                 (r"/api/v1/events.*", TornadoHandler),
                 (r"/webpack.*", WebPackHandler),
+                (r"/chunk-upload.*", TusdHandler),
                 (r"/.*", DjangoHandler),
             ],
             enable_logging=enable_logging,
@@ -333,7 +345,7 @@ def print_listeners() -> None:
 
     if not options.test:
         ports.append((webpack_port, "webpack"))
-
+    ports.append((tusd_port, "tusd"))
     for port, label in ports:
         print(f"   {port}: {label}")
     print()

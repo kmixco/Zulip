@@ -12,15 +12,15 @@ set_global("navigator", {
 });
 
 let uppy_stub;
+const channel = mock_esm("../src/channel");
 mock_esm("@uppy/core", {
     Uppy: function Uppy(options) {
         return uppy_stub.call(this, options);
     },
 });
-mock_esm("@uppy/xhr-upload", {default: class XHRUpload {}});
+mock_esm("@uppy/tus", {default: class Tus {}});
 
 const compose_actions = mock_esm("../src/compose_actions");
-mock_esm("../src/csrf", {csrf_token: "csrf_token"});
 
 const compose_ui = zrequire("compose_ui");
 const upload = zrequire("upload");
@@ -341,8 +341,7 @@ test("upload_files", async ({mock_template, override_rewire}) => {
 
 test("uppy_config", () => {
     let uppy_stub_called = false;
-    let uppy_set_meta_called = false;
-    let uppy_used_xhrupload = false;
+    let uppy_used_tusupload = false;
 
     uppy_stub = function (config) {
         uppy_stub_called = true;
@@ -353,15 +352,11 @@ test("uppy_config", () => {
         assert.ok("exceedsSize" in config.locale.strings);
 
         return {
-            setMeta(params) {
-                uppy_set_meta_called = true;
-                assert.equal(params.csrfmiddlewaretoken, "csrf_token");
-            },
             use(func, params) {
                 const func_name = func.name;
-                if (func_name === "XHRUpload") {
-                    uppy_used_xhrupload = true;
-                    assert.equal(params.endpoint, "/json/user_uploads");
+                if (func_name === "Tus") {
+                    uppy_used_tusupload = true;
+                    assert.equal(params.endpoint, "/chunk-upload");
                     assert.equal(params.formData, true);
                     assert.equal(params.fieldName, "file");
                     assert.equal(params.limit, 5);
@@ -378,8 +373,7 @@ test("uppy_config", () => {
     upload.setup_upload({mode: "compose"});
 
     assert.equal(uppy_stub_called, true);
-    assert.equal(uppy_set_meta_called, true);
-    assert.equal(uppy_used_xhrupload, true);
+    assert.equal(uppy_used_tusupload, true);
 });
 
 test("file_input", ({override_rewire}) => {
@@ -489,7 +483,7 @@ test("copy_paste", ({override, override_rewire}) => {
     assert.equal(upload_files_called, false);
 });
 
-test("uppy_events", ({override_rewire, mock_template}) => {
+test("uppy_events", ({override_rewire, override, mock_template}) => {
     $("#compose_banners .upload_banner .moving_bar").css = () => {};
     $("#compose_banners .upload_banner").length = 0;
     override_rewire(compose_ui, "smart_insert_inline", () => {});
@@ -525,9 +519,7 @@ test("uppy_events", ({override_rewire, mock_template}) => {
         id: "123",
     };
     let response = {
-        body: {
-            uri: "/user_uploads/4/cb/rue1c-MlMUjDAUdkRrEM4BTJ/copenhagen.png",
-        },
+        uploadURL: "/chunk-upload/e4b4acc5ddb8675d3af4e75a1a095bd7+xyz",
     };
 
     let compose_ui_replace_syntax_called = false;
@@ -536,7 +528,7 @@ test("uppy_events", ({override_rewire, mock_template}) => {
         assert.equal(old_syntax, "[translated: Uploading copenhagen.png…]()");
         assert.equal(
             new_syntax,
-            "[copenhagen.png](/user_uploads/4/cb/rue1c-MlMUjDAUdkRrEM4BTJ/copenhagen.png)",
+            "[copenhagen.png](/user_uploads/2/2e/e4b4acc5ddb8675d3af4e75a1a095bd7/copenhagen.png)",
         );
         assert.equal(textarea, $("#compose-textarea"));
     });
@@ -544,15 +536,19 @@ test("uppy_events", ({override_rewire, mock_template}) => {
     override_rewire(compose_ui, "autosize_textarea", () => {
         compose_ui_autosize_textarea_called = true;
     });
+    let success_callback;
+    override(channel, "get", (arg) => {
+        success_callback = arg.success;
+    });
     on_upload_success_callback(file, response);
-
+    success_callback({
+        url: "/user_uploads/2/2e/e4b4acc5ddb8675d3af4e75a1a095bd7/copenhagen.png",
+    });
     assert.ok(compose_ui_replace_syntax_called);
     assert.ok(compose_ui_autosize_textarea_called);
 
     response = {
-        body: {
-            uri: undefined,
-        },
+        uploadURL: undefined,
     };
     compose_ui_replace_syntax_called = false;
     compose_ui_autosize_textarea_called = false;

@@ -277,3 +277,8 @@ class LocalUploadBackend(ZulipUploadBackend):
         if delete_local_file("avatars", file_path):
             return export_path
         return None
+
+    def move_file(self, old_path: str, new_path: str) -> None:
+        os.makedirs(os.path.dirname(new_path), exist_ok=True)
+
+        shutil.move(old_path, new_path)

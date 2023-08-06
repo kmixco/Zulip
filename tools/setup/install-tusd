@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -eu
+
+version=1.11.1
+arch="$(uname -m)"
+
+case $arch in
+    x86_64)
+        tarball="tusd_linux_amd64"
+        sha256=f63ed05b7623fc84d4a3aadbc4f97be8fcf5bd463688467a5e8193f05b249136
+        ;;
+
+    aarch64)
+        tarball="tusd_linux_arm64"
+        sha256=3fb91bee25e520536039a01552d78742d21b593a2facc2ce565fa5c3bab88891
+        ;;
+esac
+
+check_version() {
+    out="$(tusd --version)" && [[ "$out" = *"Version: v$version"* ]]
+}
+
+if ! check_version 2>/dev/null; then
+    set -x
+    tmpdir="$(mktemp -d)"
+    trap 'rm -r "$tmpdir"' EXIT
+    cd "$tmpdir"
+    curl_opts=(-fLO --retry 3)
+    curl "${curl_opts[@]}" "https://github.com/brijsiyag/tusd/releases/download/v${version}/${tarball}.tar.gz"
+    sha256sum -c <<<"${sha256} ${tarball}.tar.gz"
+    tar -xzf "${tarball}.tar.gz" --no-same-owner "${tarball}/tusd"
+    install -Dm755 "${tarball}/tusd" /usr/local/bin/tusd
+    check_version
+fi

@@ -41,6 +41,9 @@ dependencies:
   '@uppy/progress-bar':
     specifier: ^3.0.1
     version: 3.0.2(@uppy/core@3.3.1)
+  '@uppy/tus':
+    specifier: ^3.1.2
+    version: 3.1.2(@uppy/core@3.3.1)
   '@uppy/xhr-upload':
     specifier: ^3.0.2
     version: 3.3.1(@uppy/core@3.3.1)
@@ -3250,6 +3253,17 @@ packages:
     resolution: {integrity: sha512-/zlvQNj4HjkthI+7dNdj/8mOlTg1Zb1gJ/ZsOxof0g3xXD+OAwm7asRnOwpfj2dos+lExdW/zMn8XsRGsuvb6Q==}
     dev: false
 
+  /@uppy/tus@3.1.2(@uppy/core@3.3.1):
+    resolution: {integrity: sha512-LTn1S90gMczlDzVh+bG+FQmbTUAn+ZgbsBbmZ3GRnuSWzKhtoc9TDfr71TG7bCD8wlCPujJ8Mr72DMySbT5+NA==}
+    peerDependencies:
+      '@uppy/core': ^3.3.0
+    dependencies:
+      '@uppy/companion-client': 3.2.2
+      '@uppy/core': 3.3.1
+      '@uppy/utils': 5.4.2
+      tus-js-client: 3.1.0
+    dev: false
+
   /@uppy/utils@5.4.2:
     resolution: {integrity: sha512-iK6C/ERKC2jJQFCvFOeBhpgM2WIZzwSrY4kAIlzXtYjVv15L/0UCepa6V5Qg0z5VEJQkBLMfijwpTNcg7uX7Zg==}
     dependencies:
@@ -4452,6 +4466,13 @@ packages:
       text-hex: 1.0.0
     dev: true
 
+  /combine-errors@3.0.3:
+    resolution: {integrity: sha512-C8ikRNRMygCwaTx+Ek3Yr+OuZzgZjduCOfSQBjbM8V3MfgcjSTeto/GXP6PAwKvJz/v15b7GHZvx5rOlczFw/Q==}
+    dependencies:
+      custom-error-instance: 2.1.1
+      lodash.uniqby: 4.5.0
+    dev: false
+
   /combined-stream@1.0.8:
     resolution: {integrity: sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==}
     engines: {node: '>= 0.8'}
@@ -4923,6 +4944,10 @@ packages:
 
   /cubic2quad@1.2.1:
     resolution: {integrity: sha512-wT5Y7mO8abrV16gnssKdmIhIbA9wSkeMzhh27jAguKrV82i24wER0vL5TGhUJ9dbJNDcigoRZ0IAHFEEEI4THQ==}
+    dev: false
+
+  /custom-error-instance@2.1.1:
+    resolution: {integrity: sha512-p6JFxJc3M4OTD2li2qaHkDCw9SfMw82Ldr6OC9Je1aXiGfhx2W8p3GaoeaGrPJTUN9NirTM/KTxHWMUdR1rsUg==}
     dev: false
 
   /d3-array@1.2.4:
@@ -7649,6 +7674,10 @@ packages:
     resolution: {integrity: sha512-umpJ0/k8X0MvD1ds0P9SfowREz2LenHsQaxSohMZ5OMNEU2r0tf8pdeEFTHMFxWVxKNyU9rTtK3CWzUCTKJUeQ==}
     dev: false
 
+  /js-base64@3.7.5:
+    resolution: {integrity: sha512-3MEt5DTINKqfScXKfJFrRbxkrnk2AxPWGBL/ycjz4dK8iqiSJ06UxD8jh8xuh6p10TX4t2+7FsBYVxxQbMg+qA==}
+    dev: false
+
   /js-cookie@3.0.5:
     resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
     engines: {node: '>=14'}
@@ -7915,6 +7944,37 @@ packages:
     resolution: {integrity: sha512-mKnC+QJ9pWVzv+C4/U3rRsHapFfHvQFoFB92e52xeyGMcX6/OlIl78je1u8vePzYZSkkogMPJ2yjxxsb89cxyw==}
     dev: false
 
+  /lodash._baseiteratee@4.7.0:
+    resolution: {integrity: sha512-nqB9M+wITz0BX/Q2xg6fQ8mLkyfF7MU7eE+MNBNjTHFKeKaZAPEzEg+E8LWxKWf1DQVflNEn9N49yAuqKh2mWQ==}
+    dependencies:
+      lodash._stringtopath: 4.8.0
+    dev: false
+
+  /lodash._basetostring@4.12.0:
+    resolution: {integrity: sha512-SwcRIbyxnN6CFEEK4K1y+zuApvWdpQdBHM/swxP962s8HIxPO3alBH5t3m/dl+f4CMUug6sJb7Pww8d13/9WSw==}
+    dev: false
+
+  /lodash._baseuniq@4.6.0:
+    resolution: {integrity: sha512-Ja1YevpHZctlI5beLA7oc5KNDhGcPixFhcqSiORHNsp/1QTv7amAXzw+gu4YOvErqVlMVyIJGgtzeepCnnur0A==}
+    dependencies:
+      lodash._createset: 4.0.3
+      lodash._root: 3.0.1
+    dev: false
+
+  /lodash._createset@4.0.3:
+    resolution: {integrity: sha512-GTkC6YMprrJZCYU3zcqZj+jkXkrXzq3IPBcF/fIPpNEAB4hZEtXU8zp/RwKOvZl43NUmwDbyRk3+ZTbeRdEBXA==}
+    dev: false
+
+  /lodash._root@3.0.1:
+    resolution: {integrity: sha512-O0pWuFSK6x4EXhM1dhZ8gchNtG7JMqBtrHdoUFUWXD7dJnNSUze1GuyQr5sOs0aCvgGeI3o/OJW8f4ca7FDxmQ==}
+    dev: false
+
+  /lodash._stringtopath@4.8.0:
+    resolution: {integrity: sha512-SXL66C731p0xPDC5LZg4wI5H+dJo/EO4KTqOMwLYCH3+FmmfAKJEZCm6ohGpI+T1xwsDsJCfL4OnhorllvlTPQ==}
+    dependencies:
+      lodash._basetostring: 4.12.0
+    dev: false
+
   /lodash.assign@4.2.0:
     resolution: {integrity: sha512-hFuH8TY+Yji7Eja3mGiuAxBqLagejScbG8GbG0j6o9vzn0YL14My+ktnqtZgFTosKymC9/44wP6s7xyuLfnClw==}
     dev: false
@@ -7965,6 +8025,10 @@ packages:
   /lodash.merge@4.6.2:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
 
+  /lodash.throttle@4.1.1:
+    resolution: {integrity: sha512-wIkUCfVKpVsWo3JSZlc+8MB5it+2AN5W8J7YVMST30UrvcQNZ1Okbj+rbVniijTWE6FGYy4XJq/rHkas8qJMLQ==}
+    dev: false
+
   /lodash.topairs@4.3.0:
     resolution: {integrity: sha512-qrRMbykBSEGdOgQLJJqVSdPWMD7Q+GJJ5jMRfQYb+LTLsw3tYVIabnCzRqTJb2WTo17PG5gNzXuFaZgYH/9SAQ==}
     dev: false
@@ -7975,6 +8039,13 @@ packages:
 
   /lodash.uniq@4.5.0:
     resolution: {integrity: sha512-xfBaXQd9ryd9dlSDvnvI0lvxfLJlYAZzXomUYzLKtUeOQvOP5piqAWuGtrhWeqaXK9hhoM/iyJc5AV+XfsX3HQ==}
+    dev: false
+
+  /lodash.uniqby@4.5.0:
+    resolution: {integrity: sha512-IRt7cfTtHy6f1aRVA5n7kT8rgN3N1nH6MOWLcHfpWG2SH19E3JksLK38MktLxZDhlAjCP9jpIXkOnRXlu6oByQ==}
+    dependencies:
+      lodash._baseiteratee: 4.7.0
+      lodash._baseuniq: 4.6.0
     dev: false
 
   /lodash@4.17.21:
@@ -9936,6 +10007,14 @@ packages:
       retry: 0.12.0
     dev: false
 
+  /proper-lockfile@4.1.2:
+    resolution: {integrity: sha512-TjNPblN4BwAWMXU8s9AEz4JmQxnD1NNL7bNOY/AKUzyamc379FWASUhc/K1pL2noVb+XmZKLL68cjzLsiOAMaA==}
+    dependencies:
+      graceful-fs: 4.2.11
+      retry: 0.12.0
+      signal-exit: 3.0.7
+    dev: false
+
   /protocol-buffers-schema@3.6.0:
     resolution: {integrity: sha512-TdDRD+/QNdrCGCE7v8340QyuXd4kIWIgapsE2+n/SaGiSSbomYl4TjHlvIoCWRpE7wFt02EpB35VVA2ImcBVqw==}
     dev: false
@@ -10060,7 +10139,6 @@ packages:
 
   /querystringify@2.2.0:
     resolution: {integrity: sha512-FIqgj2EUvTa7R50u0rGsyTftzjYmv/a3hO345bZNrqabNqjtgiDMgmo4mkUjd+nzU5oF3dClKqFIPUKybUyqoQ==}
-    dev: true
 
   /queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
@@ -11597,6 +11675,18 @@ packages:
       domino: 2.1.6
     dev: false
 
+  /tus-js-client@3.1.0:
+    resolution: {integrity: sha512-Hfpc8ho4C9Lhs/OflPUA/nHUHZJUrKD5upoPBq7dYJJ9DQhWocsjJU2RZYfN16Y5n19j9dFDszwCvVZ5sfcogw==}
+    dependencies:
+      buffer-from: 1.1.2
+      combine-errors: 3.0.3
+      is-stream: 2.0.1
+      js-base64: 3.7.5
+      lodash.throttle: 4.1.1
+      proper-lockfile: 4.1.2
+      url-parse: 1.5.10
+    dev: false
+
   /type-check@0.3.2:
     resolution: {integrity: sha512-ZCmOJdvOWDBYJlzAoFkC+Q0+bUyEOS1ltgp1MGU03fqHG+dbi9tBFU2Rd9QKiDZFAYrhPh2JUf7rZRIuHRKtOg==}
     engines: {node: '>= 0.8.0'}
@@ -11850,7 +11940,6 @@ packages:
     dependencies:
       querystringify: 2.2.0
       requires-port: 1.0.0
-    dev: true
 
   /url-template@2.0.8:
     resolution: {integrity: sha512-XdVKMF4SJ0nP/O7XIPB0JwAEuT9lDIYnNsK8yGVe43y0AWoKeJNdv3ZNWh7ksJ6KqQFjOO6ox/VEitLnaVNufw==}

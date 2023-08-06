@@ -7511,7 +7511,60 @@ paths:
                         "result": "success",
                         "url": "/user_uploads/temporary/322F32632F39765378464E4C63306D3961396F4970705A4D74424565432F7A756C69702E7478743A316A5053616A3A3938625F44393446466D37357254315F4F414C425A4553464F6A55",
                       }
-
+  /user_uploads/{file_id_str}:
+    get:
+      operationId: get-tus-file-path
+      summary: Get URL of a file uploaded in chunks.
+      tags: ["messages"]
+      description: |
+        Get URL of a file which was uploaded in chunks using tusd service.
+      parameters:
+        - name: file_id_str
+          in: path
+          description: |
+            The tusd file ID.
+          schema:
+            type: string
+          example: e4b4acc5ddb8675d3af4e75a1a095bd7
+          required: true
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/JsonSuccessBase"
+                  - $ref: "#/components/schemas/SuccessDescription"
+                  - additionalProperties: false
+                    properties:
+                      result: {}
+                      msg: {}
+                      url:
+                        type: string
+                        description: |
+                          The URL of the uploaded file.
+                    example:
+                      {
+                        "msg": "",
+                        "result": "success",
+                        "url": "/user_uploads/1/4e/zulip.txt",
+                      }
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CodedError"
+                  - example:
+                      {
+                        "result": "error",
+                        "msg": "File not found.",
+                        "code": "BAD_REQUEST",
+                      }
+                    description: |
+                      An example JSON error response when there is no attachment presents with provided tus_file_id.
   /users:
     get:
       operationId: get-users
