@@ -167,6 +167,7 @@ run_test("basics", ({override}) => {
             cont: opts.cont,
             msg_list: opts.msg_list,
             anchor: 1000,
+            anchor_date: undefined,
         });
 
         opts.cont();
@@ -205,4 +206,26 @@ run_test("basics", ({override}) => {
     });
 
     assert.equal(narrow_state.narrowed_to_pms(), true);
+
+    message_lists.current.selected_id = () => -1;
+
+    all_messages_data.all_messages_data = {
+        all_messages: () => messages,
+        visibly_empty: () => false,
+        first: () => ({id: 900}),
+        last: () => ({id: 1100}),
+    };
+
+    message_fetch.load_messages_for_narrow = (opts) => {
+        assert.deepEqual(opts, {
+            cont: opts.cont,
+            msg_list: opts.msg_list,
+            anchor: "date",
+            anchor_date: "2023-06-02",
+        });
+
+        opts.cont({anchor: 55}, {anchor: "date"});
+    };
+
+    narrow.activate([{operator: "date", operand: "2023-06-02"}], {trigger: "search"});
 });

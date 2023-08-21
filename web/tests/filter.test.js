@@ -599,6 +599,10 @@ test("public_operators", ({override}) => {
     filter = new Filter(operators);
     override(page_params, "narrow_stream", "default");
     assert_same_operators(filter.public_operators(), []);
+
+    operators = [{operator: "date", operand: "2023-06-02"}];
+    filter = new Filter(operators);
+    assert_same_operators(filter.public_operators(), []);
 });
 
 test("redundancies", () => {
@@ -1109,6 +1113,10 @@ test("parse", () => {
         {operator: "topic", operand: "with space"},
     ];
     _test();
+
+    string = "date:2023-06-02";
+    operators = [{operator: "date", operand: "2023-06-02"}];
+    _test();
 });
 
 test("unparse", () => {
@@ -1263,6 +1271,10 @@ test("describe", ({mock_template}) => {
     ];
     string = "exclude messages with one or more image, stream devel";
     assert.equal(Filter.search_description_as_html(narrow), string);
+
+    narrow = [{operator: "date", operand: "2023-06-22"}];
+    string = "messages sent on date 2023-06-22";
+    assert.equal(Filter.describe(narrow), string);
 
     narrow = [];
     string = "all messages";
