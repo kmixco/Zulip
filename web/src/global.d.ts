@@ -27,6 +27,7 @@ interface JQuery {
     get_offset_to_window(): DOMRect;
     tab(action?: string): this; // From web/third/bootstrap
     modal(action?: string): this; // From web/third/bootstrap
+    carousel(options: unknown): void; // From web/third/bootstrap
 
     // Types for jquery-caret-plugin
     caret(): number;
@@ -36,6 +37,21 @@ interface JQuery {
     range(text: string): this;
     selectAll(): this;
     deselectAll(): this;
+}
+
+type ClipboardDecrypter = {
+    version: number;
+    key: Uint8Array;
+    pasted: Promise<string>;
+};
+
+type ElectronBridge = {
+    decrypt_clipboard: (version: number) => ClipboardDecrypter;
+};
+
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+interface Window {
+    electron_bridge?: ElectronBridge;
 }
 
 declare const ZULIP_VERSION: string;
