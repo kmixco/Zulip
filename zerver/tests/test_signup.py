@@ -754,13 +754,17 @@ class PasswordResetTest(ZulipTestCase):
     def test_password_reset_for_soft_deactivated_user(self) -> None:
         user_profile = self.example_user("hamlet")
         email = user_profile.delivery_email
-        with self.soft_deactivate_and_check_long_term_idle(user_profile, False):
+
+        def reset_password() -> None:
             # start the password reset process by supplying an email address
             result = self.client_post("/accounts/password/reset/", {"email": email})
 
             # check the redirect link telling you to check mail for password reset link
             self.assertEqual(result.status_code, 302)
             self.assertTrue(result["Location"].endswith("/accounts/password/reset/done/"))
+
+        self.soft_deactivate_user(user_profile)
+        self.expect_soft_reactivation(user_profile, reset_password)
 
 
 class LoginTest(ZulipTestCase):
@@ -1110,7 +1114,7 @@ class EmailUnsubscribeTests(ZulipTestCase):
 
         self.assertEqual(result.status_code, 200)
 
-        user_profile.refresh_from_db()
+        user_profile = self.refresh_user(user_profile)
         self.assertFalse(user_profile.enable_offline_email_notifications)
 
     def test_welcome_unsubscribe(self) -> None:
@@ -1167,9 +1171,8 @@ class EmailUnsubscribeTests(ZulipTestCase):
 
         # The setting is toggled off, and scheduled jobs have been removed.
         self.assertEqual(result.status_code, 200)
-        # Circumvent user_profile caching.
 
-        user_profile.refresh_from_db()
+        user_profile = self.example_user("hamlet")
         self.assertFalse(user_profile.enable_digest_emails)
         self.assertEqual(0, ScheduledEmail.objects.filter(users=user_profile).count())
 
@@ -1188,7 +1191,7 @@ class EmailUnsubscribeTests(ZulipTestCase):
 
         self.assertEqual(result.status_code, 200)
 
-        user_profile.refresh_from_db()
+        user_profile = self.example_user("hamlet")
         self.assertFalse(user_profile.enable_login_emails)
 
     def test_marketing_unsubscribe(self) -> None:
@@ -1204,8 +1207,7 @@ class EmailUnsubscribeTests(ZulipTestCase):
         result = self.client_get(urllib.parse.urlparse(unsubscribe_link).path)
         self.assertEqual(result.status_code, 200)
 
-        # Circumvent user_profile caching.
-        user_profile.refresh_from_db()
+        user_profile = self.example_user("hamlet")
         self.assertFalse(user_profile.enable_marketing_emails)
 
     def test_marketing_unsubscribe_post(self) -> None:
@@ -1225,8 +1227,7 @@ class EmailUnsubscribeTests(ZulipTestCase):
         )
         self.assertEqual(result.status_code, 200)
 
-        # Circumvent user_profile caching.
-        user_profile.refresh_from_db()
+        user_profile = self.example_user("hamlet")
         self.assertFalse(user_profile.enable_marketing_emails)
 
 
@@ -2581,7 +2582,8 @@ class UserSignUpTest(ZulipTestCase):
         self.login("hamlet")
         with get_test_image_file("img.png") as image_file:
             self.client_post("/json/users/me/avatar", {"file": image_file})
-        hamlet_in_zulip.refresh_from_db()
+
+        hamlet_in_zulip = self.example_user("hamlet")
         hamlet_in_zulip.left_side_userlist = True
         hamlet_in_zulip.default_language = "de"
         hamlet_in_zulip.emojiset = "twitter"
@@ -3964,7 +3966,7 @@ class UserSignUpTest(ZulipTestCase):
         self.assertEqual(get_default_language_for_new_user(req, realm), "de")
 
         do_set_realm_property(realm, "default_language", "hi", acting_user=None)
-        realm.refresh_from_db()
+
         req = HostRequestMock()
         req.META["HTTP_ACCEPT_LANGUAGE"] = "de,en"
         self.assertEqual(get_default_language_for_new_user(req, realm), "de")
