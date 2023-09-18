@@ -211,6 +211,7 @@
     }
 }
 
+.message_edit_limit_indicator,
 #compose_limit_indicator {
     margin-right: 8px;
     font-size: 12px;
@@ -546,6 +547,7 @@
     }
 }
 
+.message_edit_content,
 textarea.new_message_textarea {
     display: table-cell;
     width: calc(100% - 12px);
