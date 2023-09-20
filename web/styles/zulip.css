@@ -2523,23 +2523,9 @@ textarea.invitee_emails {
     }
 }
 
-#custom-expiration-time-input,
+.custom-input-time-value,
 #invite-user-form {
     margin: 0;
-}
-
-select.invite-expires-in,
-select.custom-expiration-time,
-select.invite-as {
-    width: 220px;
-    height: 30px;
-    padding: 0 6px;
-    color: hsl(0deg 0% 33%);
-    border-radius: 4px;
-    border: 1px solid hsl(0deg 0% 80%);
-    cursor: pointer;
-    background-color: hsl(0deg 0% 100%);
-    vertical-align: middle;
 }
 
 #multiuse_invite_link {
@@ -2578,7 +2564,7 @@ select.invite-as {
     }
 }
 
-#custom-expiration-time-input {
+.custom-input-time-value {
     width: 5ch;
     margin-right: 15px;
 
@@ -2600,7 +2586,7 @@ select.invite-as {
     }
 }
 
-#custom-expiration-time-unit {
+.custom-input-time-unit {
     width: auto;
 }
 
