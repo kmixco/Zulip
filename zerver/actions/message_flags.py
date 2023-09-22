@@ -219,10 +219,6 @@ def do_clear_mobile_push_notifications_for_ids(
     if len(message_ids) == 0:
         return
 
-    # This function supports clearing notifications for several users
-    # only for the message-edit use case where we'll have a single message_id.
-    assert len(user_profile_ids) == 1 or len(message_ids) == 1
-
     messages_by_user = defaultdict(list)
     notifications_to_update = (
         UserMessage.objects.filter(
