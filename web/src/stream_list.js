@@ -21,6 +21,7 @@ import * as settings_data from "./settings_data";
 import * as stream_data from "./stream_data";
 import * as stream_list_sort from "./stream_list_sort";
 import * as stream_popover from "./stream_popover";
+import * as stream_topic_history from "./stream_topic_history";
 import * as sub_store from "./sub_store";
 import * as topic_list from "./topic_list";
 import * as topic_zoom from "./topic_zoom";
@@ -332,10 +333,16 @@ export function zoom_in_topics(options) {
 
         if (stream_id_for_elt($elt) === stream_id) {
             $elt.show();
-            // Add search box for topics list.
-            $elt.children("div.bottom_left_row").append(render_filter_topics());
+            // Add search section for topics list.
+            // Show the topic tab switcher only for the streams that have at least one resolved topic.
+            const stream_has_resolved_topics =
+                stream_topic_history.stream_has_resolved_topics(stream_id);
+            $elt.children("div.bottom_left_row").append(
+                render_filter_topics({stream_has_resolved_topics}),
+            );
             $("#filter-topic-input").trigger("focus");
             $("#clear_search_topic_button").hide();
+            $(".filter-topics .resolved-toggle").append(topic_list.init_resolved_toggle().get());
         } else {
             $elt.hide();
         }
@@ -353,7 +360,8 @@ export function zoom_out_topics() {
 
     $("#streams_list").expectOne().removeClass("zoom-in").addClass("zoom-out");
     $("#stream_filters li.narrow-filter").show();
-    // Remove search box for topics list from DOM.
+    // Remove search session for topics list from DOM.
+    topic_list.remove_resolved_toggle();
     $(".filter-topics").remove();
 }
 
