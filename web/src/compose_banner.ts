@@ -3,6 +3,8 @@ import $ from "jquery";
 import render_compose_banner from "../templates/compose_banner/compose_banner.hbs";
 import render_stream_does_not_exist_error from "../templates/compose_banner/stream_does_not_exist_error.hbs";
 
+import * as blueslip from "./blueslip";
+import * as compose_recipient from "./compose_recipient"; // eslint-disable-line import/no-cycle
 import * as scroll_util from "./scroll_util";
 
 export let scroll_to_message_banner_message_id: number | null = null;
@@ -61,11 +63,22 @@ export function get_compose_banner_container($textarea: JQuery): JQuery {
 // This function provides a convenient way to add new elements
 // to a banner container. The function accepts a container element
 // as a parameter, to which a banner should be appended.
+// Returns a boolean value indicating whether the append had succeeded.
+// Cases where it would fail: when trying to append a warning banner
+// when an error banner is already present.
 export function append_compose_banner_to_banner_list(
     banner: HTMLElement | JQuery.htmlString,
     $list_container: JQuery,
-): void {
+): boolean {
+    // Ensure only a single top-level element exists in the input.
+    const node = parse_single_node(banner);
+    // Skip rendering warning banners if the user does not have post permissions.
+    if (node.hasClass(WARNING) && has_error()) {
+        return false;
+    }
+
     scroll_util.get_content_element($list_container).append(banner);
+    return true;
 }
 
 export function update_or_append_banner(
@@ -164,4 +177,23 @@ export function show_stream_does_not_exist_error(stream_name: string): void {
 
     // Open stream select dropdown.
     $("#compose_select_recipient_widget").trigger("click");
+}
+
+// Ensure the input has only one single top-level element,
+// and return a JQuery element of it.
+function parse_single_node(
+    html_element: HTMLElement | JQuery.htmlString,
+): JQuery<Node | HTMLElement> {
+    if (typeof html_element === "string") {
+        const nodes = $.parseHTML(html_element.trim());
+        if (nodes.length === 0 || nodes.length > 1) {
+            blueslip.error("HTML string input can only contain one top-level element.");
+        }
+        return $(nodes[0]);
+    }
+    return $(html_element);
+}
+
+export function has_error(): boolean {
+    return compose_recipient.get_posting_policy_error_message() !== "";
 }
