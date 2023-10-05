@@ -78,6 +78,7 @@ from zerver.models import (
     get_realm_playgrounds,
     linkifiers_for_realm,
 )
+from zerver.presence_server.django_api import request_presence_event_queue
 from zerver.tornado.django_api import get_user_events, request_event_queue
 from zproject.backends import email_auth_enabled, password_auth_enabled
 
@@ -1555,6 +1556,16 @@ def do_events_register(
             pronouns_field_type_supported=pronouns_field_type_supported,
             linkifier_url_template=linkifier_url_template,
         )
+
+        presence_queue_id = request_presence_event_queue(
+            user_profile,
+            user_client,
+            queue_lifespan_secs,
+        )
+
+        ret["presence_queue_id"] = presence_queue_id
+        print("REGISTER: queue_id", ret["queue_id"])
+        print("REGISTER: presence_queue_id", ret["presence_queue_id"])
 
         # Apply events that came in while we were fetching initial data
         events = get_user_events(user_profile, queue_id, -1)
