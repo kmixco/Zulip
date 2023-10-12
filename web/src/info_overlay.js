@@ -34,103 +34,198 @@ function format_usage_html(...keys) {
 
 const markdown_help_rows = [
     {
-        markdown: "**bold**",
+        markdown: $t(
+            {
+                defaultMessage: "{markdown_syntax}bold{markdown_syntax}",
+            },
+            {markdown_syntax: "**"},
+        ),
         usage_html: format_usage_html("Ctrl", "B"),
     },
     {
-        markdown: "*italic*",
+        markdown: $t(
+            {
+                defaultMessage: "{markdown_syntax}italic{markdown_syntax}",
+            },
+            {markdown_syntax: "*"},
+        ),
         usage_html: format_usage_html("Ctrl", "I"),
     },
     {
-        markdown: "~~strikethrough~~",
+        markdown: $t(
+            {
+                defaultMessage: "{markdown_syntax}strikethrough{markdown_syntax}",
+            },
+            {markdown_syntax: "~~"},
+        ),
     },
     {
         markdown: ":heart:",
     },
     {
-        markdown: "[Zulip website](https://zulip.org)",
+        markdown: $t(
+            {
+                defaultMessage: "{open_markdown_syntax}Zulip website{close_markdown_syntax}",
+            },
+            {open_markdown_syntax: "[", close_markdown_syntax: "](https://zulip.org)"},
+        ),
         usage_html: format_usage_html("Ctrl", "Shift", "L"),
     },
     {
-        markdown: "#**stream name**",
-        output_html: "<p><a>#stream name</a></p>",
-        effect_html: "(links to a stream)",
+        markdown: $t(
+            {
+                defaultMessage: "{open_markdown_syntax}stream name{close_markdown_syntax}",
+            },
+            {open_markdown_syntax: "#**", close_markdown_syntax: "**"},
+        ),
+        output_html: $t_html(
+            {
+                defaultMessage: "<p><z-link>#stream name</z-link></p>",
+            },
+            {
+                "z-link": (content_html) => `<a>${content_html}</a>`,
+            },
+        ),
+        effect_html: `(${$t({defaultMessage: "links to a stream"})})`,
     },
     {
-        markdown: "#**stream name>topic name**",
+        markdown: $t(
+            {
+                defaultMessage:
+                    "{open_markdown_syntax}stream name>topic name{close_markdown_syntax}",
+            },
+            {open_markdown_syntax: "#**", close_markdown_syntax: "**"},
+        ),
         output_html: "<p><a>#stream name > topic name</a></p>",
-        effect_html: "(links to topic)",
+        effect_html: `(${$t({defaultMessage: "links to topic"})})`,
     },
     {
-        markdown: "@**Joe Smith**",
-        output_html: '<p><span class="user-mention">@Joe Smith</span></p>',
-        effect_html: "(notifies Joe Smith)",
+        markdown: $t(
+            {
+                defaultMessage: "{open_markdown_syntax}Joe Smith{close_markdown_syntax}",
+            },
+            {open_markdown_syntax: "@**", close_markdown_syntax: "**"},
+        ),
+        output_html: $t_html(
+            {
+                defaultMessage: "<p><z-mention>@Joe Smith</z-mention></p>",
+            },
+            {
+                "z-mention": (content_html) => `<span class="user-mention">${content_html}</span>`,
+            },
+        ),
+        effect_html: `(${$t({defaultMessage: "notifies Joe Smith"})})`,
     },
     {
-        markdown: "@_**Joe Smith**",
-        output_html: '<p><span class="user-mention">Joe Smith</span></p>',
-        effect_html: "(links to profile but doesn't notify Joe Smith)",
+        markdown: $t(
+            {
+                defaultMessage: "{open_markdown_syntax}Joe Smith{close_markdown_syntax}",
+            },
+            {open_markdown_syntax: "@_**", close_markdown_syntax: "**"},
+        ),
+        output_html: $t_html(
+            {
+                defaultMessage: "<p><z-mention>Joe Smith</z-mention></p>",
+            },
+            {
+                "z-mention": (content_html) => `<span class="user-mention">${content_html}</span>`,
+            },
+        ),
+        effect_html: `(${$t({defaultMessage: "links to profile but doesn't notify Joe Smith"})})`,
     },
     {
-        markdown: "@*support team*",
-        output_html: '<p><span class="user-group-mention">@support team</span></p>',
-        effect_html: "(notifies <b>support team</b> group)",
+        markdown: $t(
+            {
+                defaultMessage: "{open_markdown_syntax}support team{close_markdown_syntax}",
+            },
+            {open_markdown_syntax: "@*", close_markdown_syntax: "*"},
+        ),
+        output_html: $t_html(
+            {
+                defaultMessage: "<p><z-team-mention>@support team</z-team-mention></p>",
+            },
+            {
+                "z-team-mention": (content_html) =>
+                    `<span class="user-group-mention">${content_html}</span>`,
+            },
+        ),
+        effect_html: `(${$t_html({defaultMessage: "notifies <b>support team</b> group"})})`,
     },
     {
-        markdown: "@**all**",
-        effect_html: "(notifies all recipients)",
+        markdown: $t(
+            {
+                defaultMessage: "{open_markdown_syntax}all{close_markdown_syntax}",
+            },
+            {open_markdown_syntax: "@**", close_markdown_syntax: "**"},
+        ),
+        effect_html: `(${$t({defaultMessage: "notifies all recipients"})})`,
     },
     {
         markdown: `\
-* Milk
-* Tea
-  * Green tea
-  * Black tea
-* Coffee`,
+* ${$t({defaultMessage: "Milk"})}
+* ${$t({defaultMessage: "Tea"})}
+  * ${$t({defaultMessage: "Green tea"})}
+  * ${$t({defaultMessage: "Black tea"})}
+* ${$t({defaultMessage: "Coffee"})}`,
     },
     {
         markdown: `\
-1. Milk
-1. Tea
-1. Coffee`,
+1. ${$t({defaultMessage: "Milk"})}
+1. ${$t({defaultMessage: "Tea"})}
+1. ${$t({defaultMessage: "Coffee"})}`,
     },
     {
-        markdown: "> Quoted",
+        markdown: $t(
+            {
+                defaultMessage: "{quote_markdown_syntax} Quoted",
+            },
+            {quote_markdown_syntax: ">"},
+        ),
     },
     {
         markdown: `\
 \`\`\`quote
-Quoted block
+${$t({defaultMessage: "Quoted block"})}
 \`\`\``,
     },
     {
         markdown: `\
-\`\`\`spoiler Always visible heading
-This text won't be visible until the user clicks.
+\`\`\`spoiler ${$t({defaultMessage: "Always visible heading"})}
+${$t({defaultMessage: "This text won't be visible until the user clicks."})}
 \`\`\``,
     },
     {
-        markdown: "Some inline `code`",
+        markdown: $t(
+            {defaultMessage: "Some inline {code_markdown_syntax}"},
+            {code_markdown_syntax: "`code`"},
+        ),
     },
     {
         markdown: `\
 \`\`\`
-def zulip():
-    print "Zulip"
+def ${$t({defaultMessage: "zulip"})}():
+    print "${$t({defaultMessage: "Zulip"})}"
 \`\`\``,
     },
     {
         markdown: `\
 \`\`\`python
-def zulip():
-    print "Zulip"
+def ${$t({defaultMessage: "zulip"})}():
+    print "${$t({defaultMessage: "Zulip"})}"
 \`\`\``,
         output_html: `\
 <div class="codehilite"><pre><span class="k">def</span> <span class="nf">zulip</span><span class="p">():</span>
-    <span class="k">print</span> <span class="s">"Zulip"</span></pre></div>`,
+    <span class="k">print</span> <span class="s">"${$t({
+        defaultMessage: "Zulip",
+    })}"</span></pre></div>`,
     },
     {
-        markdown: "Some inline math $$ e^{i \\pi} + 1 = 0 $$",
+        markdown: $t(
+            {
+                defaultMessage: "Some inline math {math_markdown_syntax}",
+            },
+            {math_markdown_syntax: "$$ e^{i \\pi} + 1 = 0 $$"},
+        ),
     },
     {
         markdown: `\
@@ -139,42 +234,56 @@ def zulip():
 \`\`\``,
     },
     {
-        markdown: "/me is busy working",
-        output_html:
-            '<p><span class="sender_name">Iago</span> <span class="status-message">is busy working</span></p>',
+        markdown: $t(
+            {
+                defaultMessage: "{me_markdown_syntax} is busy working",
+            },
+            {me_markdown_syntax: "/me"},
+        ),
+        output_html: $t_html(
+            {
+                defaultMessage:
+                    "<p><z-sender>Iago</z-sender> <z-status>is busy working</z-status></p>",
+            },
+            {
+                "z-sender": (content_html) => `<span class="sender_name">${content_html}</span>`,
+                "z-status": (content_html) => `<span class="status-message">${content_html}</span>`,
+            },
+        ),
     },
     {
         markdown: "<time:2023-05-28T13:30:00+05:30>",
-        output_html:
-            '<p><time datetime="2023-05-28T08:00:00Z"><i class="fa fa-clock-o"></i>Sun, May 28, 2023, 1:30 PM</time></p>',
+        output_html: '<time datetime="2023-05-28T13:30:00+05:30"></time>',
     },
     {
-        markdown: `/poll What did you drink this morning?
-Milk
-Tea
-Coffee`,
+        markdown: `/poll ${$t({defaultMessage: "What did you drink this morning?"})}
+${$t({defaultMessage: "Milk"})}
+${$t({defaultMessage: "Tea"})}
+${$t({defaultMessage: "Coffee"})}`,
         output_html: `\
 <div class="poll-widget">
-    <h4 class="poll-question-header reduced-font-size">What did you drink this morning?</h4>
+    <h4 class="poll-question-header reduced-font-size">${$t({
+        defaultMessage: "What did you drink this morning?",
+    })}</h4>
     <i class="fa fa-pencil poll-edit-question"></i>
     <ul class="poll-widget">
     <li>
         <button class="poll-vote">
             0
         </button>
-        <span>Milk</span>
+        <span>${$t({defaultMessage: "Milk"})}</span>
     </li>
     <li>
         <button class="poll-vote">
             0
         </button>
-        <span>Tea</span>
+        <span>${$t({defaultMessage: "Tea"})}</span>
     </li>
     <li>
         <button class="poll-vote">
             0
         </button>
-        <span>Coffee</span>
+        <span>${$t({defaultMessage: "Coffee"})}</span>
     </li>
     </ul>
 </div>
@@ -186,7 +295,7 @@ Coffee`,
 <div class="message_content rendered_markdown">
    <div class="widget-content">
       <div class="todo-widget">
-        <h4>Task list</h4>
+        <h4>${$t({defaultMessage: "Task list"})}</h4>
         <ul class="todo-widget new-style">
             <li>
                 <label class="checkbox">
@@ -195,7 +304,9 @@ Coffee`,
                         <span></span>
                     </div>
                     <div>
-                        <strong>Submit final budget</strong> - Due Friday
+                        ${$t_html({
+                            defaultMessage: "<strong>Submit final budget</strong> - Due Friday",
+                        })}
                     </div>
                 </label>
             </li>
@@ -205,7 +316,15 @@ Coffee`,
                         <input type="checkbox" class="task" checked="checked">
                         <span></span>
                     </div>
-                    <strike><em><strong>Share draft budget</strong> - By Tuesday</em></strike>
+                    ${$t_html(
+                        {
+                            defaultMessage:
+                                "<z-del><em><strong>Share draft budget</strong> - By Tuesday</em></z-del>",
+                        },
+                        {
+                            "z-del": (content_html) => `<del>${content_html}</del>`,
+                        },
+                    )}
                 </label>
             </li>
         </ul>
