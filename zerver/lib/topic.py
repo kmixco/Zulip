@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import orjson
 from django.db import connection
 from django.db.models import Q, QuerySet, Subquery
 from sqlalchemy.sql import ColumnElement, column, func, literal
@@ -111,7 +110,7 @@ def save_message_for_edit_use_case(message: Message) -> None:
             "rendered_content",
             "rendered_content_version",
             "last_edit_time",
-            "edit_history",
+            "edit_history_entries",
             "has_attachment",
             "has_image",
             "has_link",
@@ -134,12 +133,7 @@ def update_edit_history(
     message: Message, last_edit_time: datetime, edit_history_event: EditHistoryEvent
 ) -> None:
     message.last_edit_time = last_edit_time
-    if message.edit_history is not None:
-        edit_history: List[EditHistoryEvent] = orjson.loads(message.edit_history)
-        edit_history.insert(0, edit_history_event)
-    else:
-        edit_history = [edit_history_event]
-    message.edit_history = orjson.dumps(edit_history).decode()
+    message.edit_history_entries.insert(0, edit_history_event)
 
 
 def update_messages_for_topic_edit(
@@ -167,7 +161,7 @@ def update_messages_for_topic_edit(
         *Message.DEFAULT_SELECT_RELATED
     )
 
-    update_fields = ["edit_history", "last_edit_time"]
+    update_fields = ["edit_history_entries", "last_edit_time"]
 
     if new_stream is not None:
         # If we're moving the messages between streams, only move
