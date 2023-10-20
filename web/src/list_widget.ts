@@ -58,6 +58,7 @@ type ListWidgetOpts<Key = unknown, Item = Key> = {
 
 type ListWidget<Key = unknown, Item = Key> = {
     get_current_list(): Item[];
+    get_rendered_list(): Item[];
     filter_and_sort(): void;
     retain_selected_items(): void;
     render(how_many?: number): void;
@@ -255,6 +256,10 @@ export function create<Key = unknown, Item = Key>(
     const widget: ListWidget<Key, Item> = {
         get_current_list() {
             return meta.filtered_list;
+        },
+
+        get_rendered_list() {
+            return meta.filtered_list.slice(0, meta.offset);
         },
 
         filter_and_sort() {
