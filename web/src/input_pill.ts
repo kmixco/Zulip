@@ -8,6 +8,7 @@ import render_input_pill from "../templates/input_pill.hbs";
 import * as blueslip from "./blueslip";
 import type {EmojiRenderingDetails} from "./emoji";
 import * as keydown_util from "./keydown_util";
+import * as people from "./people";
 import * as ui_util from "./ui_util";
 
 // See https://zulip.readthedocs.io/en/latest/subsystems/input-pills.html
@@ -16,6 +17,7 @@ export type InputPillItem<T> = {
     display_value: string;
     type: string;
     img_src?: string;
+    user_id?: number;
     deactivated?: boolean;
     status_emoji_info?: EmojiRenderingDetails & {emoji_alt_code: boolean}; // TODO: Move this in user_status.js
     should_add_guest_user_indicator?: boolean;
@@ -56,6 +58,7 @@ type InputPillRenderingDetails = {
     img_src?: string;
     deactivated?: boolean;
     has_status?: boolean;
+    is_bot?: boolean;
     status_emoji_info?: EmojiRenderingDetails & {emoji_alt_code: boolean};
     should_add_guest_user_indicator?: boolean;
 };
@@ -150,6 +153,8 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
             if (has_image) {
                 opts.img_src = item.img_src;
             }
+
+            opts.is_bot = item.user_id ? people.user_is_bot(item.user_id) : false;
 
             if (store.pill_config?.show_user_status_emoji === true) {
                 const has_status = item.status_emoji_info !== undefined;
