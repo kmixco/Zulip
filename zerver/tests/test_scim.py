@@ -37,7 +37,7 @@ class SCIMTestCase(ZulipTestCase):
             "name": {"formatted": user_profile.full_name},
             "displayName": user_profile.full_name,
             "role": ZulipSCIMUser.ROLE_TYPE_TO_NAME[user_profile.role],
-            "active": True,
+            "active": user_profile.is_active,
             "meta": {
                 "resourceType": "User",
                 "created": user_profile.date_joined.isoformat(),
@@ -309,9 +309,9 @@ class TestSCIMUser(SCIMTestCase):
             "startIndex": 1,
             "Resources": [
                 self.generate_user_schema(user_profile)
-                for user_profile in UserProfile.objects.filter(realm=realm, is_bot=False).order_by(
-                    "id"
-                )
+                for user_profile in UserProfile.objects.filter(
+                    realm=realm, is_bot=False, is_active=True
+                ).order_by("id")
             ],
         }
 
