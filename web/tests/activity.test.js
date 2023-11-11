@@ -24,6 +24,7 @@ const narrow = mock_esm("../src/narrow");
 const padded_widget = mock_esm("../src/padded_widget");
 const pm_list = mock_esm("../src/pm_list");
 const popovers = mock_esm("../src/popovers");
+const recent_view_ui = mock_esm("../src/recent_view_ui");
 const resize = mock_esm("../src/resize");
 const sidebar_ui = mock_esm("../src/sidebar_ui");
 const scroll_util = mock_esm("../src/scroll_util");
@@ -642,6 +643,7 @@ test("initialize", ({override, mock_template}) => {
     mock_template("presence_rows.hbs", false, () => {});
     override(padded_widget, "update_padding", () => {});
     override(pm_list, "update_private_messages", () => {});
+    override(recent_view_ui, "update_recent_view_rendered_time", () => {});
     override(watchdog, "check_for_unsuspend", () => {});
 
     let payload;
@@ -721,8 +723,9 @@ test("initialize", ({override, mock_template}) => {
     clear();
 });
 
-test("electron_bridge", ({override_rewire}) => {
+test("electron_bridge", ({override, override_rewire}) => {
     override_rewire(activity, "send_presence_to_server", () => {});
+    override(recent_view_ui, "update_recent_view_rendered_time", () => {});
 
     function with_bridge_idle(bridge_idle, f) {
         with_overrides(({override}) => {

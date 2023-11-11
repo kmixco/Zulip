@@ -3,6 +3,7 @@ import $ from "jquery";
 import * as channel from "./channel";
 import {page_params} from "./page_params";
 import * as presence from "./presence";
+import * as recent_view_ui from "./recent_view_ui";
 import * as watchdog from "./watchdog";
 
 /*
@@ -127,6 +128,7 @@ export function mark_client_active() {
     if (!client_is_active) {
         client_is_active = true;
         send_presence_to_server();
+        recent_view_ui.update_recent_view_rendered_time();
     }
 }
 
