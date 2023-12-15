@@ -1,5 +1,6 @@
 from typing import Iterable, List, TypedDict
 
+from zerver.actions.message_flags import do_clear_mobile_push_notifications_for_ids
 from zerver.lib import retention
 from zerver.lib.retention import move_messages_to_archive
 from zerver.lib.stream_subscription import get_active_subscriptions_for_stream_id
@@ -55,6 +56,7 @@ def do_delete_messages(realm: Realm, messages: Iterable[Message]) -> None:
 
     event["message_type"] = message_type
     send_event_on_commit(realm, event, users_to_notify)
+    do_clear_mobile_push_notifications_for_ids(users_to_notify, message_ids)
 
 
 def do_delete_messages_by_sender(user: UserProfile) -> None:

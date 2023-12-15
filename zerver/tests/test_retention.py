@@ -12,6 +12,7 @@ from zerver.actions.message_send import internal_send_private_message
 from zerver.actions.realm_settings import do_set_realm_property
 from zerver.actions.scheduled_messages import check_schedule_message, delete_scheduled_message
 from zerver.actions.submessage import do_add_submessage
+from zerver.actions.user_settings import do_change_user_setting
 from zerver.lib.retention import (
     archive_messages,
     clean_archived_data,
@@ -37,6 +38,7 @@ from zerver.models import (
     Stream,
     SubMessage,
     UserMessage,
+    UserProfile,
     get_client,
     get_realm,
     get_stream,
@@ -1142,7 +1144,7 @@ class TestDoDeleteMessages(ZulipTestCase):
         message_ids = [self.send_stream_message(cordelia, "Verona", str(i)) for i in range(10)]
         messages = Message.objects.filter(id__in=message_ids)
 
-        with self.assert_database_query_count(20):
+        with self.assert_database_query_count(21):
             do_delete_messages(realm, messages)
         self.assertFalse(Message.objects.filter(id__in=message_ids).exists())
 
@@ -1174,3 +1176,40 @@ class TestDoDeleteMessages(ZulipTestCase):
         # We only send the event to see no exception is thrown - as it would be if the block
         # in process_notification to handle this old format of "users to notify" wasn't correct.
         send_event(realm, event, [{"id": cordelia.id}, {"id": hamlet.id}])
+
+    @mock.patch("zerver.lib.push_notifications.push_notifications_enabled", return_value=True)
+    def test_clear_push_notifications_on_message_deletion(
+        self, mock_push_notifications: mock.MagicMock
+    ) -> None:
+        realm = get_realm("zulip")
+        hamlet = self.example_user("hamlet")
+        cordelia = self.example_user("cordelia")
+        do_change_user_setting(cordelia, "enable_stream_push_notifications", True, acting_user=None)
+
+        def get_mobile_push_notification_ids(user_profile: UserProfile) -> List[int]:
+            return list(
+                UserMessage.objects.filter(
+                    user_profile=user_profile,
+                )
+                .extra(
+                    where=[UserMessage.where_active_push_notification()],
+                )
+                .order_by("message_id")
+                .values_list("message_id", flat=True)
+            )
+
+        self.assertEqual(get_mobile_push_notification_ids(cordelia), [])
+
+        message_ids = [self.send_stream_message(hamlet, "Verona", str(i)) for i in range(10)]
+        self.assertEqual(
+            get_mobile_push_notification_ids(cordelia),
+            message_ids,
+        )
+
+        messages = Message.objects.filter(id__in=message_ids)
+        do_delete_messages(realm, messages)
+        self.assertEqual(
+            get_mobile_push_notification_ids(cordelia),
+            [],
+        )
+        mock_push_notifications.assert_called()
