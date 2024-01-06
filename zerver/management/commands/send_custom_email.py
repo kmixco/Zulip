@@ -131,7 +131,12 @@ class Command(ZulipBaseCommand):
 
         if options["entire_server"]:
             users = UserProfile.objects.filter(
-                is_active=True, is_bot=False, is_mirror_dummy=False, realm__deactivated=False
+                is_active=True,
+                is_bot=False,
+                is_mirror_protouser=False,
+                is_imported_protouser=False,
+                is_deleted_protouser=False,
+                realm__deactivated=False,
             )
         elif options["marketing"]:
             # Marketing email sent at most once to each email address
@@ -140,7 +145,9 @@ class Command(ZulipBaseCommand):
             users = UserProfile.objects.filter(
                 is_active=True,
                 is_bot=False,
-                is_mirror_dummy=False,
+                is_mirror_protouser=False,
+                is_imported_protouser=False,
+                is_deleted_protouser=False,
                 realm__deactivated=False,
                 enable_marketing_emails=True,
             ).filter(
@@ -169,7 +176,9 @@ class Command(ZulipBaseCommand):
             users = UserProfile.objects.filter(
                 is_active=True,
                 is_bot=False,
-                is_mirror_dummy=False,
+                is_mirror_protouser=False,
+                is_imported_protouser=False,
+                is_deleted_protouser=False,
                 role__in=admin_roles,
                 realm__deactivated=False,
                 realm__in=sponsored_realms,
