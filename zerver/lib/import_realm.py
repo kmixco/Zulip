@@ -1,16 +1,13 @@
 import logging
 import os
 import shutil
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from mimetypes import guess_type
 from typing import Any, Dict, List, Optional, Tuple
 
-import bmemcached
 import orjson
 from bs4 import BeautifulSoup
 from django.conf import settings
-from django.core.cache import cache
 from django.core.validators import validate_email
 from django.db import connection, transaction
 from django.utils.timezone import now as timezone_now
@@ -27,6 +24,7 @@ from zerver.lib.export import DATE_FIELDS, Field, Path, Record, TableData, Table
 from zerver.lib.markdown import markdown_convert
 from zerver.lib.markdown import version as markdown_version
 from zerver.lib.message import get_last_message_id
+from zerver.lib.parallel import run_parallel
 from zerver.lib.push_notifications import sends_notifications_directly
 from zerver.lib.remote_server import maybe_enqueue_audit_log_upload
 from zerver.lib.server_initialization import create_internal_realm, server_initialized
@@ -883,20 +881,12 @@ def import_uploads(
         # avatar.  TODO: This implementation is hacky, both in that it
         # does get_user_profile_by_id for each user, and in that it
         # might be better to require the export to just have these.
-
-        if processes == 1:
-            for record in records:
-                process_avatars(record)
-        else:
-            connection.close()
-            _cache = cache._cache  # type: ignore[attr-defined] # not in stubs
-            assert isinstance(_cache, bmemcached.Client)
-            _cache.disconnect_all()
-            with ProcessPoolExecutor(max_workers=processes) as executor:
-                for future in as_completed(
-                    executor.submit(process_avatars, record) for record in records
-                ):
-                    future.result()
+        run_parallel(
+            process_avatars,
+            records,
+            processes if s3_uploads else 1,
+            report=lambda count: logging.info("Processed %s/%s avatars", count, len(records)),
+        )
 
 
 # Importing data suffers from a difficult ordering problem because of
