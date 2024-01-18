@@ -1455,6 +1455,7 @@ def export_uploads_and_avatars(
     attachments: Optional[List[Attachment]] = None,
     user: Optional[UserProfile],
     output_dir: Path,
+    processes: int = 1,
 ) -> None:
     uploads_output_dir = os.path.join(output_dir, "uploads")
     avatars_output_dir = os.path.join(output_dir, "avatars")
@@ -1530,6 +1531,7 @@ def export_uploads_and_avatars(
             output_dir=uploads_output_dir,
             user_id_emails=user_id_emails,
             valid_hashes=path_ids,
+            processes=processes,
         )
 
         avatar_hash_values = set()
@@ -1547,6 +1549,7 @@ def export_uploads_and_avatars(
             output_dir=avatars_output_dir,
             user_id_emails=user_id_emails,
             valid_hashes=avatar_hash_values,
+            processes=processes,
         )
 
         emoji_paths = {get_emoji_path(realm_emoji) for realm_emoji in realm_emojis}
@@ -1560,6 +1563,7 @@ def export_uploads_and_avatars(
             output_dir=emoji_output_dir,
             user_id_emails=user_id_emails,
             valid_hashes=emoji_paths,
+            processes=processes,
         )
 
         if user is None:
@@ -1572,6 +1576,7 @@ def export_uploads_and_avatars(
                 output_dir=realm_icons_output_dir,
                 user_id_emails=user_id_emails,
                 valid_hashes=None,
+                processes=processes,
             )
 
 
@@ -1657,6 +1662,7 @@ def export_files_from_s3(
     output_dir: Path,
     user_id_emails: Dict[int, str],
     valid_hashes: Optional[Set[str]],
+    processes: int = 1,
 ) -> None:
     processing_uploads = flavor == "upload"
     processing_emoji = flavor == "emoji"
@@ -1674,12 +1680,11 @@ def export_files_from_s3(
         user_id_emails[email_gateway_bot.id] = email_gateway_bot.email
         email_gateway_bot_id = email_gateway_bot.id
 
-    count = 0
-    for bkey in bucket.objects.filter(Prefix=object_prefix):
-        if valid_hashes is not None and bkey.Object().key not in valid_hashes:
-            continue
+    def export_one_key(key: str) -> Optional[Dict[str, Any]]:
+        if valid_hashes is not None and key not in valid_hashes:
+            return None
 
-        s3_obj = bucket.Object(bkey.key)
+        s3_obj = bucket.Object(key)
 
         """
         For very old realms we may not have proper metadata. If you really need
@@ -1694,7 +1699,7 @@ def export_files_from_s3(
                 raise AssertionError(f"Missing user_profile_id in key metadata: {s3_obj.metadata}")
 
         if int(s3_obj.metadata["user_profile_id"]) not in user_id_emails:
-            continue
+            return None
 
         if checking_metadata and s3_obj.metadata["realm_id"] != str(realm.id):
             # This can happen if an email address has moved realms
@@ -1707,19 +1712,20 @@ def export_files_from_s3(
             # Email gateway bot sends messages, potentially including attachments, cross-realm.
             print(f"File uploaded by email gateway bot: {s3_obj.key} / {s3_obj.metadata}")
 
-        record = _get_exported_s3_record(
+        _save_s3_object_to_file(s3_obj, output_dir, processing_uploads)
+        return _get_exported_s3_record(
             bucket_name, s3_obj, processing_emoji, user_id_emails, realm.id
         )
 
-        _save_s3_object_to_file(s3_obj, output_dir, processing_uploads)
+    records = run_parallel(
+        export_one_key,
+        (bkey.key for bkey in bucket.objects.filter(Prefix=object_prefix)),
+        processes,
+        report_every=100,
+        report=lambda count: logging.info("Finished %s", count),
+    )
 
-        records.append(record)
-        count += 1
-
-        if count % 100 == 0:
-            logging.info("Finished %s", count)
-
-    write_records_json_file(output_dir, records)
+    write_records_json_file(output_dir, [record for record in records if record is not None])
 
 
 def export_uploads_from_local(
@@ -2006,7 +2012,9 @@ def do_export_realm(
     )
 
     logging.info("Exporting uploaded files and avatars")
-    export_uploads_and_avatars(realm, attachments=attachments, user=None, output_dir=output_dir)
+    export_uploads_and_avatars(
+        realm, attachments=attachments, user=None, output_dir=output_dir, processes=processes
+    )
 
     # Start parallel jobs to export the UserMessage objects.
     launch_user_message_subprocesses(
