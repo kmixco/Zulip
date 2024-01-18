@@ -1,16 +1,17 @@
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Any, Callable, Iterable, Optional, Tuple, TypeVar
+from typing import Any, Callable, Iterable, List, Optional, Tuple, TypeVar
 
 import bmemcached
 from django.core.cache import cache
 from django.db import connection
 
 ParallelRecordType = TypeVar("ParallelRecordType")
+OutputRecordType = TypeVar("OutputRecordType")
 
 
 def run_parallel(
-    func: Callable[[ParallelRecordType], None],
+    func: Callable[[ParallelRecordType], OutputRecordType],
     records: Iterable[ParallelRecordType],
     processes: int,
     *,
@@ -19,7 +20,7 @@ def run_parallel(
     catch: bool = False,
     report_every: int = 1000,
     report: Optional[Callable[[int], None]] = None,
-) -> None:  # nocoverage
+) -> List[OutputRecordType]:  # nocoverage
     count = 0
 
     assert processes > 0
@@ -27,18 +28,19 @@ def run_parallel(
     if processes == 1:
         if initializer is not None:
             initializer(*initargs)
+        results = []
         for record in records:
             count += 1
             if report is not None and count % report_every == 0:
                 report(count)
             if catch:
                 try:
-                    func(record)
+                    results.append(func(record))
                 except Exception:
                     logging.exception("Error processing item: %s", record, stack_info=True)
             else:
-                func(record)
-        return
+                results.append(func(record))
+        return results
 
     # Close our database connections, so our forked children do not
     # share them.  Django will transparently re-open them as needed.
@@ -55,6 +57,8 @@ def run_parallel(
             count += 1
             if report is not None and count % report_every == 0:
                 report(count)
+        results = []
+        for future in futures:
             if catch and future.exception() is not None:
                 # Re-raise the exception so we can log it
                 try:
@@ -62,4 +66,5 @@ def run_parallel(
                 except Exception:
                     logging.exception("Error processing item: %s", record, stack_info=True)
             else:
-                future.result()
+                results.append(future.result())
+        return results
