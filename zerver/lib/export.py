@@ -1665,12 +1665,13 @@ def export_files_from_s3(
 
     logging.info("Downloading %s files from %s", flavor, bucket_name)
 
-    email_gateway_bot: Optional[UserProfile] = None
+    email_gateway_bot_id: Optional[int] = None
 
     if handle_system_bots and settings.EMAIL_GATEWAY_BOT is not None:
         internal_realm = get_realm(settings.SYSTEM_BOT_REALM)
         email_gateway_bot = get_system_bot(settings.EMAIL_GATEWAY_BOT, internal_realm.id)
         user_id_emails[email_gateway_bot.id] = email_gateway_bot.email
+        email_gateway_bot_id = email_gateway_bot.id
 
     count = 0
     for bkey in bucket.objects.filter(Prefix=object_prefix):
@@ -1696,8 +1697,8 @@ def export_files_from_s3(
 
             # This can happen if an email address has moved realms
             if key.metadata["realm_id"] != str(realm.id):
-                if email_gateway_bot is None or key.metadata["user_profile_id"] != str(
-                    email_gateway_bot.id
+                if email_gateway_bot_id is None or key.metadata["user_profile_id"] != str(
+                    email_gateway_bot_id
                 ):
                     raise AssertionError(
                         f"Key metadata problem: {key.key} / {key.metadata} / {realm.id}"
