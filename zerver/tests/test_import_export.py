@@ -327,7 +327,7 @@ class RealmImportExportTest(ExportFile):
             do_export_realm(
                 realm=realm,
                 output_dir=output_dir,
-                threads=0,
+                processes=0,
                 exportable_user_ids=exportable_user_ids,
                 consent_message_id=consent_message_id,
                 public_only=public_only,

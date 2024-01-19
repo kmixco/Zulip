@@ -1923,7 +1923,7 @@ def get_exportable_scheduled_message_ids(
 def do_export_realm(
     realm: Realm,
     output_dir: Path,
-    threads: int,
+    processes: int,
     exportable_user_ids: Optional[Set[int]] = None,
     public_only: bool = False,
     consent_message_id: Optional[int] = None,
@@ -1931,11 +1931,11 @@ def do_export_realm(
 ) -> str:
     response: TableData = {}
 
-    # We need at least one thread running to export
+    # We need at least one process running to export
     # UserMessage rows.  The management command should
     # enforce this for us.
     if not settings.TEST_SUITE:
-        assert threads >= 1
+        assert processes >= 1
 
     realm_config = get_realm_config()
 
@@ -2004,7 +2004,7 @@ def do_export_realm(
 
     # Start parallel jobs to export the UserMessage objects.
     launch_user_message_subprocesses(
-        threads=threads, output_dir=output_dir, consent_message_id=consent_message_id
+        processes=processes, output_dir=output_dir, consent_message_id=consent_message_id
     )
 
     logging.info("Finished exporting %s", realm.string_id)
@@ -2061,17 +2061,17 @@ def create_soft_link(source: Path, in_progress: bool = True) -> None:
 
 
 def launch_user_message_subprocesses(
-    threads: int, output_dir: Path, consent_message_id: Optional[int] = None
+    processes: int, output_dir: Path, consent_message_id: Optional[int] = None
 ) -> None:
-    logging.info("Launching %d PARALLEL subprocesses to export UserMessage rows", threads)
+    logging.info("Launching %d PARALLEL subprocesses to export UserMessage rows", processes)
     pids = {}
 
-    for shard_id in range(threads):
+    for shard_id in range(processes):
         arguments = [
             os.path.join(settings.DEPLOY_ROOT, "manage.py"),
             "export_usermessage_batch",
             f"--path={output_dir}",
-            f"--thread={shard_id}",
+            f"--process={shard_id}",
         ]
         if consent_message_id is not None:
             arguments.append(f"--consent-message-id={consent_message_id}")
@@ -2383,7 +2383,7 @@ def get_consented_user_ids(consent_message_id: int) -> Set[int]:
 def export_realm_wrapper(
     realm: Realm,
     output_dir: str,
-    threads: int,
+    processes: int,
     upload: bool,
     public_only: bool,
     percent_callback: Optional[Callable[[Any], None]] = None,
@@ -2393,7 +2393,7 @@ def export_realm_wrapper(
     tarball_path = do_export_realm(
         realm=realm,
         output_dir=output_dir,
-        threads=threads,
+        processes=processes,
         public_only=public_only,
         consent_message_id=consent_message_id,
         export_as_active=export_as_active,

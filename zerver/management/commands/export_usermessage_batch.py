@@ -16,7 +16,7 @@ class Command(BaseCommand):
     @override
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("--path", help="Path to find messages.json archives")
-        parser.add_argument("--thread", help="Thread ID")
+        parser.add_argument("--process", help="Process identifier (used only for debug output)")
         parser.add_argument(
             "--consent-message-id",
             type=int,
@@ -25,7 +25,7 @@ class Command(BaseCommand):
 
     @override
     def handle(self, *args: Any, **options: Any) -> None:
-        logging.info("Starting UserMessage batch thread %s", options["thread"])
+        logging.info("Starting UserMessage batch process %s", options["process"])
         files = set(glob.glob(os.path.join(options["path"], "messages-*.json.partial")))
         for partial_path in files:
             locked_path = partial_path.replace(".json.partial", ".json.locked")
@@ -35,7 +35,7 @@ class Command(BaseCommand):
             except FileNotFoundError:
                 # Already claimed by another process
                 continue
-            logging.info("Thread %s processing %s", options["thread"], output_path)
+            logging.info("Process %s processing %s", options["process"], output_path)
             try:
                 export_usermessages_batch(locked_path, output_path, options["consent_message_id"])
             except BaseException:
