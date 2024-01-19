@@ -41,7 +41,7 @@ from zerver.lib import upload
 from zerver.lib.avatar_hash import user_avatar_path
 from zerver.lib.bot_config import set_bot_config
 from zerver.lib.bot_lib import StateHandler
-from zerver.lib.export import Record, do_export_realm, do_export_user, export_usermessages_batch
+from zerver.lib.export import Record, do_export_realm, do_export_user
 from zerver.lib.import_realm import do_import_realm, get_incoming_message_ids
 from zerver.lib.streams import create_stream_if_needed
 from zerver.lib.test_classes import ZulipTestCase
@@ -327,7 +327,7 @@ class RealmImportExportTest(ExportFile):
             do_export_realm(
                 realm=realm,
                 output_dir=output_dir,
-                processes=0,
+                processes=1,
                 exportable_user_ids=exportable_user_ids,
                 consent_message_id=consent_message_id,
                 public_only=public_only,
@@ -338,12 +338,6 @@ class RealmImportExportTest(ExportFile):
             # will cause a conflict - so rotate it.
             realm.uuid = uuid.uuid4()
             realm.save()
-
-            export_usermessages_batch(
-                input_path=os.path.join(output_dir, "messages-000001.json.partial"),
-                output_path=os.path.join(output_dir, "messages-000001.json"),
-                consent_message_id=consent_message_id,
-            )
 
     def test_export_files_from_local(self) -> None:
         user = self.example_user("hamlet")

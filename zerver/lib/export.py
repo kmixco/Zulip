@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import tempfile
 from contextlib import suppress
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Set, Tuple, TypedDict
@@ -30,6 +32,7 @@ import zerver.lib.upload
 from analytics.models import RealmCount, StreamCount, UserCount
 from scripts.lib.zulip_tools import overwrite_symlink
 from zerver.lib.avatar_hash import user_avatar_path_from_ids
+from zerver.lib.parallel import run_parallel
 from zerver.lib.pysa import mark_sanitized
 from zerver.lib.upload.s3 import get_bucket
 from zerver.models import (
@@ -1210,17 +1213,14 @@ def fetch_usermessages(
     return user_message_chunk
 
 
-def export_usermessages_batch(
-    input_path: Path, output_path: Path, consent_message_id: Optional[int] = None
-) -> None:
+def export_usermessages_batch(input_path: str) -> None:
     """As part of the system for doing parallel exports, this runs on one
     batch of Message objects and adds the corresponding UserMessage
-    objects. (This is called by the export_usermessage_batch
-    management command).
+    objects.
 
     See write_message_partial_for_query for more context."""
-    assert input_path.endswith((".partial", ".locked"))
-    assert output_path.endswith(".json")
+    assert input_path.endswith(".partial")
+    output_path = input_path.replace(".json.partial", ".json")
 
     with open(input_path, "rb") as input_file:
         input_data: MessagePartial = orjson.loads(input_file.read())
@@ -1229,7 +1229,11 @@ def export_usermessages_batch(
     user_profile_ids = set(input_data["zerver_userprofile_ids"])
     realm = Realm.objects.get(id=input_data["realm_id"])
     zerver_usermessage_data = fetch_usermessages(
-        realm, message_ids, user_profile_ids, output_path, consent_message_id
+        realm,
+        message_ids,
+        user_profile_ids,
+        output_path,
+        usermessage_context.get().consent_message_id,
     )
 
     output_data: TableData = dict(
@@ -1931,11 +1935,7 @@ def do_export_realm(
 ) -> str:
     response: TableData = {}
 
-    # We need at least one process running to export
-    # UserMessage rows.  The management command should
-    # enforce this for us.
-    if not settings.TEST_SUITE:
-        assert processes >= 1
+    assert processes >= 1
 
     realm_config = get_realm_config()
 
@@ -2060,29 +2060,31 @@ def create_soft_link(source: Path, in_progress: bool = True) -> None:
         logging.info("See %s for output files", new_target)
 
 
+@dataclass
+class UserMessageProcessState:
+    consent_message_id: Optional[int] = None
+
+
+usermessage_context: ContextVar[UserMessageProcessState] = ContextVar("usermessage_context")
+
+
+def usermessage_process_initializer(consent_message_id: Optional[int] = None) -> None:
+    usermessage_context.set(UserMessageProcessState(consent_message_id))
+
+
 def launch_user_message_subprocesses(
     processes: int, output_dir: Path, consent_message_id: Optional[int] = None
 ) -> None:
-    logging.info("Launching %d PARALLEL subprocesses to export UserMessage rows", processes)
-    pids = {}
-
-    for shard_id in range(processes):
-        arguments = [
-            os.path.join(settings.DEPLOY_ROOT, "manage.py"),
-            "export_usermessage_batch",
-            f"--path={output_dir}",
-            f"--process={shard_id}",
-        ]
-        if consent_message_id is not None:
-            arguments.append(f"--consent-message-id={consent_message_id}")
-
-        process = subprocess.Popen(arguments)
-        pids[process.pid] = shard_id
-
-    while pids:
-        pid, status = os.wait()
-        shard = pids.pop(pid)
-        print(f"Shard {shard} finished, status {status}")
+    files = glob.glob(os.path.join(output_dir, "messages-*.json.partial"))
+    run_parallel(
+        export_usermessages_batch,
+        files,
+        processes,
+        initializer=usermessage_process_initializer,
+        initargs=(consent_message_id,),
+        report_every=10,
+        report=lambda count: logging.info("Successfully processed %s message files", count),
+    )
 
 
 def do_export_user(user_profile: UserProfile, output_dir: Path) -> None:
