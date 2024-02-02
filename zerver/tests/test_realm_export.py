@@ -58,7 +58,7 @@ class RealmExportTest(ZulipTestCase):
         self.assertEqual(args["realm"], admin.realm)
         self.assertEqual(args["public_only"], True)
         self.assertTrue(os.path.basename(args["output_dir"]).startswith("zulip-export-"))
-        self.assertEqual(args["threads"], 6)
+        self.assertEqual(args["processes"], 6)
 
         # Get the entry and test that iago initiated it.
         audit_log_entry = RealmAuditLog.objects.filter(
@@ -117,7 +117,7 @@ class RealmExportTest(ZulipTestCase):
         def fake_export_realm(
             realm: Realm,
             output_dir: str,
-            threads: int,
+            processes: int,
             exportable_user_ids: Optional[Set[int]] = None,
             public_only: bool = False,
             consent_message_id: Optional[int] = None,
@@ -126,7 +126,7 @@ class RealmExportTest(ZulipTestCase):
             self.assertEqual(realm, admin.realm)
             self.assertEqual(public_only, True)
             self.assertTrue(os.path.basename(output_dir).startswith("zulip-export-"))
-            self.assertEqual(threads, 6)
+            self.assertEqual(processes, 6)
 
             # Check that the export shows up as in progress
             result = self.client_get("/json/export/realm")

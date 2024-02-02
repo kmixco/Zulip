@@ -1,19 +1,19 @@
 import logging
 import os
 import shutil
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from mimetypes import guess_type
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-import bmemcached
 import orjson
 from bs4 import BeautifulSoup
 from django.conf import settings
-from django.core.cache import cache
 from django.core.validators import validate_email
 from django.db import connection, transaction
 from django.utils.timezone import now as timezone_now
+from mypy_boto3_s3.service_resource import Bucket
 from psycopg2.extras import execute_values
 from psycopg2.sql import SQL, Identifier
 
@@ -27,11 +27,11 @@ from zerver.lib.export import DATE_FIELDS, Field, Path, Record, TableData, Table
 from zerver.lib.markdown import markdown_convert
 from zerver.lib.markdown import version as markdown_version
 from zerver.lib.message import get_last_message_id
+from zerver.lib.parallel import run_parallel
 from zerver.lib.push_notifications import sends_notifications_directly
 from zerver.lib.remote_server import maybe_enqueue_audit_log_upload
 from zerver.lib.server_initialization import create_internal_realm, server_initialized
 from zerver.lib.streams import render_stream_description
-from zerver.lib.timestamp import datetime_to_timestamp
 from zerver.lib.upload import upload_backend
 from zerver.lib.upload.base import BadImageError, sanitize_name
 from zerver.lib.upload.s3 import get_bucket
@@ -744,159 +744,182 @@ def process_avatars(record: Dict[str, Any]) -> None:
             )
 
 
+@dataclass
+class UploaderProcessState:
+    import_dir: str
+    flavor: Literal["upload", "emoji", "avatar", "realm_icon_or_logo"]
+    default_user_profile_id: Optional[int] = None
+    bucket: Optional[Bucket] = None
+
+
+uploader_context: ContextVar[UploaderProcessState] = ContextVar("uploader_context")
+
+
+def uploader_process_initializer(
+    import_dir: str,
+    flavor: Literal["upload", "emoji", "avatar", "realm_icon_or_logo"],
+    default_user_profile_id: Optional[int],
+) -> None:
+    if settings.LOCAL_UPLOADS_DIR is None:
+        if flavor == "upload":
+            bucket_name = settings.S3_AUTH_UPLOADS_BUCKET
+        else:
+            bucket_name = settings.S3_AVATAR_BUCKET
+        bucket = get_bucket(bucket_name)
+    else:
+        bucket = None
+    uploader = UploaderProcessState(
+        import_dir=import_dir,
+        flavor=flavor,
+        default_user_profile_id=default_user_profile_id,
+        bucket=bucket,
+    )
+    uploader_context.set(uploader)
+
+
+def upload_record(record: Dict[str, Any]) -> Tuple[str, str]:
+    state = uploader_context.get()
+    if state.flavor == "avatar":
+        # For avatars, we need to rehash the user ID with the
+        # new server's avatar salt
+        relative_path = user_avatar_path_from_ids(record["user_profile_id"], record["realm_id"])
+        if record["s3_path"].endswith(".original"):
+            relative_path += ".original"
+        else:
+            # TODO: This really should be unconditional.  However,
+            # until we fix the S3 upload backend to use the .png
+            # path suffix for its normal avatar URLs, we need to
+            # only do this for the LOCAL_UPLOADS_DIR backend.
+            if state.bucket is None:
+                relative_path += ".png"
+    elif state.flavor == "emoji":
+        # For emojis we follow the function 'upload_emoji_image'
+        relative_path = RealmEmoji.PATH_ID_TEMPLATE.format(
+            realm_id=record["realm_id"], emoji_file_name=record["file_name"]
+        )
+    elif state.flavor == "realm_icon_or_logo":
+        icon_name = os.path.basename(record["path"])
+        relative_path = os.path.join(str(record["realm_id"]), "realm", icon_name)
+    else:
+        # This relative_path is basically the new location of the file,
+        # which will later be copied from its original location as
+        # specified in record["s3_path"].
+        relative_path = upload_backend.generate_message_upload_path(
+            str(record["realm_id"]), sanitize_name(os.path.basename(record["path"]))
+        )
+
+    if state.bucket is not None:
+        key = state.bucket.Object(relative_path)
+        metadata = {}
+        if "user_profile_id" not in record:
+            # This should never happen for uploads or avatars; if
+            # so, it is an error, default_user_profile_id will be
+            # None, and we assert.  For emoji / realm icons, we
+            # fall back to default_user_profile_id.
+            # default_user_profile_id can be None in Gitter
+            # imports, which do not create any owners; but Gitter
+            # does not have emoji which we would need to allocate
+            # a user to.
+            assert state.default_user_profile_id is not None
+            metadata["user_profile_id"] = str(state.default_user_profile_id)
+        else:
+            user_profile_id = int(record["user_profile_id"])
+            # Support email gateway bot and other cross-realm messages
+            if user_profile_id in ID_MAP["user_profile"]:
+                logging.info("Uploaded by ID mapped user: %s!", user_profile_id)
+                user_profile_id = ID_MAP["user_profile"][user_profile_id]
+            user_profile = get_user_profile_by_id(user_profile_id)
+            metadata["user_profile_id"] = str(user_profile.id)
+
+        if "last_modified" in record:
+            metadata["orig_last_modified"] = str(record["last_modified"])
+        metadata["realm_id"] = str(record["realm_id"])
+
+        # Zulip exports will always have a content-type, but third-party exports might not.
+        content_type = record.get("content_type")
+        if content_type is None:
+            content_type = guess_type(record["s3_path"])[0]
+            if content_type is None:
+                # This is the default for unknown data.  Note that
+                # for `.original` files, this is the value we'll
+                # set; that is OK, because those are never served
+                # directly anyway.
+                content_type = "application/octet-stream"
+
+        key.upload_file(
+            Filename=os.path.join(state.import_dir, record["path"]),
+            ExtraArgs={"ContentType": content_type, "Metadata": metadata},
+        )
+    else:
+        assert settings.LOCAL_UPLOADS_DIR is not None
+        assert settings.LOCAL_AVATARS_DIR is not None
+        assert settings.LOCAL_FILES_DIR is not None
+        if state.flavor == "upload":
+            file_path = os.path.join(settings.LOCAL_FILES_DIR, relative_path)
+        else:
+            file_path = os.path.join(settings.LOCAL_AVATARS_DIR, relative_path)
+        orig_file_path = os.path.join(state.import_dir, record["path"])
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        shutil.copy(orig_file_path, file_path)
+
+    return (record["s3_path"], relative_path)
+
+
 def import_uploads(
     realm: Realm,
     import_dir: Path,
     processes: int,
+    flavor: Literal["upload", "emoji", "avatar", "realm_icon_or_logo"],
     default_user_profile_id: Optional[int] = None,
-    processing_avatars: bool = False,
-    processing_emojis: bool = False,
-    processing_realm_icons: bool = False,
 ) -> None:
-    if processing_avatars and processing_emojis:
-        raise AssertionError("Cannot import avatars and emojis at the same time!")
-    if processing_avatars:
-        logging.info("Importing avatars")
-    elif processing_emojis:
-        logging.info("Importing emojis")
-    elif processing_realm_icons:
-        logging.info("Importing realm icons and logos")
+    if flavor == "avatar":
+        logging.info("Importing avatars with %d processes", processes)
+    elif flavor == "emoji":
+        logging.info("Importing emojis with %d processes", processes)
+    elif flavor == "realm_icon_or_logo":
+        logging.info("Importing realm icons and logos with %d processes", processes)
     else:
-        logging.info("Importing uploaded files")
+        logging.info("Importing uploaded files with %d processes", processes)
 
     records_filename = os.path.join(import_dir, "records.json")
     with open(records_filename, "rb") as records_file:
         records: List[Dict[str, Any]] = orjson.loads(records_file.read())
-    timestamp = datetime_to_timestamp(timezone_now())
 
     re_map_foreign_keys_internal(
         records, "records", "realm_id", related_table="realm", id_field=True
     )
-    if not processing_emojis and not processing_realm_icons:
+    if flavor in {"avatar", "upload"}:
         re_map_foreign_keys_internal(
             records, "records", "user_profile_id", related_table="user_profile", id_field=True
         )
 
-    s3_uploads = settings.LOCAL_UPLOADS_DIR is None
-
-    if s3_uploads:
-        if processing_avatars or processing_emojis or processing_realm_icons:
-            bucket_name = settings.S3_AVATAR_BUCKET
-        else:
-            bucket_name = settings.S3_AUTH_UPLOADS_BUCKET
-        bucket = get_bucket(bucket_name)
-
-    count = 0
-    for record in records:
-        count += 1
-        if count % 1000 == 0:
-            logging.info("Processed %s/%s uploads", count, len(records))
-
-        if processing_avatars:
-            # For avatars, we need to rehash the user ID with the
-            # new server's avatar salt
-            relative_path = user_avatar_path_from_ids(record["user_profile_id"], record["realm_id"])
-            if record["s3_path"].endswith(".original"):
-                relative_path += ".original"
-            else:
-                # TODO: This really should be unconditional.  However,
-                # until we fix the S3 upload backend to use the .png
-                # path suffix for its normal avatar URLs, we need to
-                # only do this for the LOCAL_UPLOADS_DIR backend.
-                if not s3_uploads:
-                    relative_path += ".png"
-        elif processing_emojis:
-            # For emojis we follow the function 'upload_emoji_image'
-            relative_path = RealmEmoji.PATH_ID_TEMPLATE.format(
-                realm_id=record["realm_id"], emoji_file_name=record["file_name"]
-            )
-            record["last_modified"] = timestamp
-        elif processing_realm_icons:
-            icon_name = os.path.basename(record["path"])
-            relative_path = os.path.join(str(record["realm_id"]), "realm", icon_name)
-            record["last_modified"] = timestamp
-        else:
-            # This relative_path is basically the new location of the file,
-            # which will later be copied from its original location as
-            # specified in record["s3_path"].
-            relative_path = upload_backend.generate_message_upload_path(
-                str(record["realm_id"]), sanitize_name(os.path.basename(record["path"]))
-            )
-            path_maps["attachment_path"][record["s3_path"]] = relative_path
-
-        if s3_uploads:
-            key = bucket.Object(relative_path)
-            metadata = {}
-            if "user_profile_id" not in record:
-                # This should never happen for uploads or avatars; if
-                # so, it is an error, default_user_profile_id will be
-                # None, and we assert.  For emoji / realm icons, we
-                # fall back to default_user_profile_id.
-                # default_user_profile_id can be None in Gitter
-                # imports, which do not create any owners; but Gitter
-                # does not have emoji which we would need to allocate
-                # a user to.
-                assert default_user_profile_id is not None
-                metadata["user_profile_id"] = str(default_user_profile_id)
-            else:
-                user_profile_id = int(record["user_profile_id"])
-                # Support email gateway bot and other cross-realm messages
-                if user_profile_id in ID_MAP["user_profile"]:
-                    logging.info("Uploaded by ID mapped user: %s!", user_profile_id)
-                    user_profile_id = ID_MAP["user_profile"][user_profile_id]
-                user_profile = get_user_profile_by_id(user_profile_id)
-                metadata["user_profile_id"] = str(user_profile.id)
-
-            if "last_modified" in record:
-                metadata["orig_last_modified"] = str(record["last_modified"])
-            metadata["realm_id"] = str(record["realm_id"])
-
-            # Zulip exports will always have a content-type, but third-party exports might not.
-            content_type = record.get("content_type")
-            if content_type is None:
-                content_type = guess_type(record["s3_path"])[0]
-                if content_type is None:
-                    # This is the default for unknown data.  Note that
-                    # for `.original` files, this is the value we'll
-                    # set; that is OK, because those are never served
-                    # directly anyway.
-                    content_type = "application/octet-stream"
-
-            key.upload_file(
-                Filename=os.path.join(import_dir, record["path"]),
-                ExtraArgs={"ContentType": content_type, "Metadata": metadata},
-            )
-        else:
-            assert settings.LOCAL_UPLOADS_DIR is not None
-            assert settings.LOCAL_AVATARS_DIR is not None
-            assert settings.LOCAL_FILES_DIR is not None
-            if processing_avatars or processing_emojis or processing_realm_icons:
-                file_path = os.path.join(settings.LOCAL_AVATARS_DIR, relative_path)
-            else:
-                file_path = os.path.join(settings.LOCAL_FILES_DIR, relative_path)
-            orig_file_path = os.path.join(import_dir, record["path"])
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            shutil.copy(orig_file_path, file_path)
-
-    if processing_avatars:
+    path_map_list = run_parallel(
+        upload_record,
+        records,
+        processes,
+        initializer=uploader_process_initializer,
+        initargs=(
+            str(import_dir),
+            default_user_profile_id,
+            flavor,
+        ),
+        report_every=1,
+        report=lambda count: logging.info("Processed %s/%s uploads", count, len(records)),
+    )
+    if flavor == "upload":
+        for path_id, relative_path in path_map_list:
+            path_maps["attachment_path"][path_id] = relative_path
+    elif flavor == "avatar":
         # Ensure that we have medium-size avatar images for every
         # avatar.  TODO: This implementation is hacky, both in that it
         # does get_user_profile_by_id for each user, and in that it
         # might be better to require the export to just have these.
-
-        if processes == 1:
-            for record in records:
-                process_avatars(record)
-        else:
-            connection.close()
-            _cache = cache._cache  # type: ignore[attr-defined] # not in stubs
-            assert isinstance(_cache, bmemcached.Client)
-            _cache.disconnect_all()
-            with ProcessPoolExecutor(max_workers=processes) as executor:
-                for future in as_completed(
-                    executor.submit(process_avatars, record) for record in records
-                ):
-                    future.result()
+        run_parallel(
+            process_avatars,
+            records,
+            processes,
+            report=lambda count: logging.info("Processed %s/%s avatars", count, len(records)),
+        )
 
 
 # Importing data suffers from a difficult ordering problem because of
@@ -1305,13 +1328,14 @@ def do_import_realm(import_dir: Path, subdomain: str, processes: int = 1) -> Rea
         os.path.join(import_dir, "avatars"),
         processes,
         default_user_profile_id=None,  # Fail if there is no user set
-        processing_avatars=True,
+        flavor="avatar",
     )
     import_uploads(
         realm,
         os.path.join(import_dir, "uploads"),
         processes,
         default_user_profile_id=None,  # Fail if there is no user set
+        flavor="upload",
     )
 
     # We need to have this check as the emoji files are only present in the data
@@ -1323,7 +1347,7 @@ def do_import_realm(import_dir: Path, subdomain: str, processes: int = 1) -> Rea
             os.path.join(import_dir, "emoji"),
             processes,
             default_user_profile_id=first_user_profile.id if first_user_profile else None,
-            processing_emojis=True,
+            flavor="emoji",
         )
 
     if os.path.exists(os.path.join(import_dir, "realm_icons")):
@@ -1332,7 +1356,7 @@ def do_import_realm(import_dir: Path, subdomain: str, processes: int = 1) -> Rea
             os.path.join(import_dir, "realm_icons"),
             processes,
             default_user_profile_id=first_user_profile.id if first_user_profile else None,
-            processing_realm_icons=True,
+            flavor="realm_icon_or_logo",
         )
 
     sender_map = {user["id"]: user for user in data["zerver_userprofile"]}

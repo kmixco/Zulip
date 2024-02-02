@@ -13,9 +13,23 @@ import shutil
 import subprocess
 import tempfile
 from contextlib import suppress
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Set, Tuple, TypedDict
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+    TypedDict,
+)
 
 import orjson
 from django.apps import apps
@@ -23,13 +37,14 @@ from django.conf import settings
 from django.db.models import Exists, OuterRef, Q
 from django.forms.models import model_to_dict
 from django.utils.timezone import is_naive as timezone_is_naive
-from mypy_boto3_s3.service_resource import Object
+from mypy_boto3_s3.service_resource import Bucket, Object
 from typing_extensions import TypeAlias
 
 import zerver.lib.upload
 from analytics.models import RealmCount, StreamCount, UserCount
 from scripts.lib.zulip_tools import overwrite_symlink
 from zerver.lib.avatar_hash import user_avatar_path_from_ids
+from zerver.lib.parallel import run_parallel
 from zerver.lib.pysa import mark_sanitized
 from zerver.lib.upload.s3 import get_bucket
 from zerver.models import (
@@ -71,7 +86,7 @@ from zerver.models import (
     UserTopic,
 )
 from zerver.models.realms import get_realm
-from zerver.models.users import get_system_bot, get_user_profile_by_id
+from zerver.models.users import get_system_bot
 
 # Custom mypy types follow:
 Record: TypeAlias = Dict[str, Any]
@@ -1210,17 +1225,14 @@ def fetch_usermessages(
     return user_message_chunk
 
 
-def export_usermessages_batch(
-    input_path: Path, output_path: Path, consent_message_id: Optional[int] = None
-) -> None:
+def export_usermessages_batch(input_path: str) -> None:
     """As part of the system for doing parallel exports, this runs on one
     batch of Message objects and adds the corresponding UserMessage
-    objects. (This is called by the export_usermessage_batch
-    management command).
+    objects.
 
     See write_message_partial_for_query for more context."""
-    assert input_path.endswith((".partial", ".locked"))
-    assert output_path.endswith(".json")
+    assert input_path.endswith(".partial")
+    output_path = input_path.replace(".json.partial", ".json")
 
     with open(input_path, "rb") as input_file:
         input_data: MessagePartial = orjson.loads(input_file.read())
@@ -1229,7 +1241,11 @@ def export_usermessages_batch(
     user_profile_ids = set(input_data["zerver_userprofile_ids"])
     realm = Realm.objects.get(id=input_data["realm_id"])
     zerver_usermessage_data = fetch_usermessages(
-        realm, message_ids, user_profile_ids, output_path, consent_message_id
+        realm,
+        message_ids,
+        user_profile_ids,
+        output_path,
+        usermessage_context.get().consent_message_id,
     )
 
     output_data: TableData = dict(
@@ -1451,6 +1467,7 @@ def export_uploads_and_avatars(
     attachments: Optional[List[Attachment]] = None,
     user: Optional[UserProfile],
     output_dir: Path,
+    processes: int = 1,
 ) -> None:
     uploads_output_dir = os.path.join(output_dir, "uploads")
     avatars_output_dir = os.path.join(output_dir, "avatars")
@@ -1511,7 +1528,7 @@ def export_uploads_and_avatars(
                 output_dir=realm_icons_output_dir,
             )
     else:
-        user_ids = {user.id for user in users}
+        user_id_to_emails = {user.id: user.email for user in users}
 
         # Some bigger installations will have their data stored on S3.
 
@@ -1524,12 +1541,13 @@ def export_uploads_and_avatars(
             bucket_name=settings.S3_AUTH_UPLOADS_BUCKET,
             object_prefix=f"{realm.id}/",
             output_dir=uploads_output_dir,
-            user_ids=user_ids,
+            user_id_to_emails=user_id_to_emails,
             valid_hashes=path_ids,
+            processes=processes,
         )
 
         avatar_hash_values = set()
-        for user_id in user_ids:
+        for user_id in user_id_to_emails:
             avatar_path = user_avatar_path_from_ids(user_id, realm.id)
             avatar_hash_values.add(avatar_path)
             avatar_hash_values.add(avatar_path + ".original")
@@ -1541,8 +1559,9 @@ def export_uploads_and_avatars(
             bucket_name=settings.S3_AVATAR_BUCKET,
             object_prefix=f"{realm.id}/",
             output_dir=avatars_output_dir,
-            user_ids=user_ids,
+            user_id_to_emails=user_id_to_emails,
             valid_hashes=avatar_hash_values,
+            processes=processes,
         )
 
         emoji_paths = {get_emoji_path(realm_emoji) for realm_emoji in realm_emojis}
@@ -1554,8 +1573,9 @@ def export_uploads_and_avatars(
             bucket_name=settings.S3_AVATAR_BUCKET,
             object_prefix=f"{realm.id}/emoji/images/",
             output_dir=emoji_output_dir,
-            user_ids=user_ids,
+            user_id_to_emails=user_id_to_emails,
             valid_hashes=emoji_paths,
+            processes=processes,
         )
 
         if user is None:
@@ -1566,18 +1586,20 @@ def export_uploads_and_avatars(
                 bucket_name=settings.S3_AVATAR_BUCKET,
                 object_prefix=f"{realm.id}/realm/",
                 output_dir=realm_icons_output_dir,
-                user_ids=user_ids,
+                user_id_to_emails=user_id_to_emails,
                 valid_hashes=None,
+                processes=processes,
             )
 
 
 def _get_exported_s3_record(
-    bucket_name: str, key: Object, processing_emoji: bool
+    key: Object,
 ) -> Dict[str, Any]:
     # Helper function for export_files_from_s3
     record: Dict[str, Any] = dict(
+        path=key.key,
         s3_path=key.key,
-        bucket=bucket_name,
+        bucket=key.bucket_name,
         size=key.content_length,
         last_modified=key.last_modified,
         content_type=key.content_type,
@@ -1585,19 +1607,19 @@ def _get_exported_s3_record(
     )
     record.update(key.metadata)
 
-    if processing_emoji:
+    state = attachment_context.get()
+    if state.flavor == "emoji":
         record["file_name"] = os.path.basename(key.key)
 
     if "user_profile_id" in record:
-        user_profile = get_user_profile_by_id(int(record["user_profile_id"]))
-        record["user_profile_email"] = user_profile.email
+        record["user_profile_email"] = state.user_id_to_emails[int(record["user_profile_id"])]
 
         # Fix the record ids
         record["user_profile_id"] = int(record["user_profile_id"])
 
         # A few early avatars don't have 'realm_id' on the object; fix their metadata
         if "realm_id" not in record:
-            record["realm_id"] = user_profile.realm_id
+            record["realm_id"] = state.realm_id
     else:
         # There are some rare cases in which 'user_profile_id' may not be present
         # in S3 metadata. Eg: Exporting an organization which was created
@@ -1611,6 +1633,43 @@ def _get_exported_s3_record(
         raise Exception("Missing realm_id")
 
     return record
+
+
+@dataclass
+class AttachmentProcessState:
+    bucket: Bucket
+    valid_hashes: Optional[Dict[str, str]]
+    user_id_to_emails: Dict[int, str]
+    email_gateway_bot_id: Optional[int]
+    realm_id: int
+    flavor: Literal["upload", "emoji", "avatar", "realm_icon_or_logo"]
+    output_dir: str
+
+
+attachment_context: ContextVar[AttachmentProcessState] = ContextVar("attachment_context")
+
+
+def attachment_process_initializer(
+    bucket_name: str,
+    valid_hashes: Optional[Dict[str, str]],
+    user_id_to_emails: Dict[int, str],
+    email_gateway_bot_id: Optional[int],
+    realm_id: int,
+    flavor: Literal["upload", "emoji", "avatar", "realm_icon_or_logo"],
+    output_dir: str,
+) -> None:
+    bucket = get_bucket(bucket_name)
+    attachment_context.set(
+        AttachmentProcessState(
+            bucket,
+            valid_hashes,
+            user_id_to_emails,
+            email_gateway_bot_id,
+            realm_id,
+            flavor,
+            output_dir,
+        )
+    )
 
 
 def _save_s3_object_to_file(
@@ -1640,76 +1699,85 @@ def _save_s3_object_to_file(
     key.download_file(Filename=filename)
 
 
+def export_one_file_from_s3(key: str) -> Optional[Dict[str, Any]]:
+    state = attachment_context.get()
+    if state.valid_hashes is not None and key not in state.valid_hashes:
+        return None
+
+    s3_obj = state.bucket.Object(key)
+
+    """
+    For very old realms we may not have proper metadata. If you really need
+    an export to bypass these checks, flip the following flag.
+    """
+    checking_metadata = True
+    if checking_metadata:
+        if "realm_id" not in s3_obj.metadata:
+            raise AssertionError(f"Missing realm_id in key metadata: {s3_obj.metadata}")
+
+        if "user_profile_id" not in s3_obj.metadata:
+            raise AssertionError(f"Missing user_profile_id in key metadata: {s3_obj.metadata}")
+
+    if int(s3_obj.metadata["user_profile_id"]) not in state.user_id_to_emails:
+        return None
+
+    if checking_metadata and s3_obj.metadata["realm_id"] != str(state.realm_id):
+        # This can happen if an email address has moved realms
+        if state.email_gateway_bot_id is None or s3_obj.metadata["user_profile_id"] != str(
+            state.email_gateway_bot_id
+        ):
+            raise AssertionError(
+                f"Key metadata problem: {s3_obj.key} / {s3_obj.metadata} / {state.realm_id}"
+            )
+        # Email gateway bot sends messages, potentially including attachments, cross-realm.
+        print(f"File uploaded by email gateway bot: {s3_obj.key} / {s3_obj.metadata}")
+
+    _save_s3_object_to_file(s3_obj, state.output_dir, state.flavor == "upload")
+    return _get_exported_s3_record(s3_obj)
+
+
 def export_files_from_s3(
     realm: Realm,
     handle_system_bots: bool,
-    flavor: str,
+    flavor: Literal["upload", "emoji", "avatar", "realm_icon_or_logo"],
     bucket_name: str,
     object_prefix: str,
     output_dir: Path,
-    user_ids: Set[int],
+    user_id_to_emails: Dict[int, str],
     valid_hashes: Optional[Set[str]],
+    processes: int = 1,
 ) -> None:
-    processing_uploads = flavor == "upload"
-    processing_emoji = flavor == "emoji"
-
     bucket = get_bucket(bucket_name)
-    records = []
 
-    logging.info("Downloading %s files from %s", flavor, bucket_name)
+    logging.info("Downloading %s files from %s with %d processes", flavor, bucket_name, processes)
 
-    email_gateway_bot: Optional[UserProfile] = None
+    email_gateway_bot_id: Optional[int] = None
 
     if handle_system_bots and settings.EMAIL_GATEWAY_BOT is not None:
         internal_realm = get_realm(settings.SYSTEM_BOT_REALM)
         email_gateway_bot = get_system_bot(settings.EMAIL_GATEWAY_BOT, internal_realm.id)
-        user_ids.add(email_gateway_bot.id)
+        user_id_to_emails[email_gateway_bot.id] = email_gateway_bot.email
+        email_gateway_bot_id = email_gateway_bot.id
 
-    count = 0
-    for bkey in bucket.objects.filter(Prefix=object_prefix):
-        if valid_hashes is not None and bkey.Object().key not in valid_hashes:
-            continue
+    records = run_parallel(
+        export_one_file_from_s3,
+        (bkey.key for bkey in bucket.objects.filter(Prefix=object_prefix)),
+        processes,
+        initializer=attachment_process_initializer,
+        initargs=(
+            bucket_name,
+            valid_hashes,
+            user_id_to_emails,
+            email_gateway_bot_id,
+            realm.id,
+            flavor,
+            output_dir,
+        ),
+        report_every=100,
+        report=lambda count: logging.info("Finished %s", count),
+    )
 
-        key = bucket.Object(bkey.key)
-
-        """
-        For very old realms we may not have proper metadata. If you really need
-        an export to bypass these checks, flip the following flag.
-        """
-        checking_metadata = True
-        if checking_metadata:
-            if "realm_id" not in key.metadata:
-                raise AssertionError(f"Missing realm_id in key metadata: {key.metadata}")
-
-            if "user_profile_id" not in key.metadata:
-                raise AssertionError(f"Missing user_profile_id in key metadata: {key.metadata}")
-
-            if int(key.metadata["user_profile_id"]) not in user_ids:
-                continue
-
-            # This can happen if an email address has moved realms
-            if key.metadata["realm_id"] != str(realm.id):
-                if email_gateway_bot is None or key.metadata["user_profile_id"] != str(
-                    email_gateway_bot.id
-                ):
-                    raise AssertionError(
-                        f"Key metadata problem: {key.key} / {key.metadata} / {realm.id}"
-                    )
-                # Email gateway bot sends messages, potentially including attachments, cross-realm.
-                print(f"File uploaded by email gateway bot: {key.key} / {key.metadata}")
-
-        record = _get_exported_s3_record(bucket_name, key, processing_emoji)
-
-        record["path"] = key.key
-        _save_s3_object_to_file(key, output_dir, processing_uploads)
-
-        records.append(record)
-        count += 1
-
-        if count % 100 == 0:
-            logging.info("Finished %s", count)
-
-    write_records_json_file(output_dir, records)
+    write_records_json_file(output_dir, [record for record in records if record is not None])
 
 
 def export_uploads_from_local(
@@ -1923,7 +1991,7 @@ def get_exportable_scheduled_message_ids(
 def do_export_realm(
     realm: Realm,
     output_dir: Path,
-    threads: int,
+    processes: int,
     exportable_user_ids: Optional[Set[int]] = None,
     public_only: bool = False,
     consent_message_id: Optional[int] = None,
@@ -1931,11 +1999,7 @@ def do_export_realm(
 ) -> str:
     response: TableData = {}
 
-    # We need at least one thread running to export
-    # UserMessage rows.  The management command should
-    # enforce this for us.
-    if not settings.TEST_SUITE:
-        assert threads >= 1
+    assert processes >= 1
 
     realm_config = get_realm_config()
 
@@ -2000,11 +2064,13 @@ def do_export_realm(
     )
 
     logging.info("Exporting uploaded files and avatars")
-    export_uploads_and_avatars(realm, attachments=attachments, user=None, output_dir=output_dir)
+    export_uploads_and_avatars(
+        realm, attachments=attachments, user=None, output_dir=output_dir, processes=processes
+    )
 
     # Start parallel jobs to export the UserMessage objects.
     launch_user_message_subprocesses(
-        threads=threads, output_dir=output_dir, consent_message_id=consent_message_id
+        processes=processes, output_dir=output_dir, consent_message_id=consent_message_id
     )
 
     logging.info("Finished exporting %s", realm.string_id)
@@ -2060,29 +2126,31 @@ def create_soft_link(source: Path, in_progress: bool = True) -> None:
         logging.info("See %s for output files", new_target)
 
 
+@dataclass
+class UserMessageProcessState:
+    consent_message_id: Optional[int] = None
+
+
+usermessage_context: ContextVar[UserMessageProcessState] = ContextVar("usermessage_context")
+
+
+def usermessage_process_initializer(consent_message_id: Optional[int] = None) -> None:
+    usermessage_context.set(UserMessageProcessState(consent_message_id))
+
+
 def launch_user_message_subprocesses(
-    threads: int, output_dir: Path, consent_message_id: Optional[int] = None
+    processes: int, output_dir: Path, consent_message_id: Optional[int] = None
 ) -> None:
-    logging.info("Launching %d PARALLEL subprocesses to export UserMessage rows", threads)
-    pids = {}
-
-    for shard_id in range(threads):
-        arguments = [
-            os.path.join(settings.DEPLOY_ROOT, "manage.py"),
-            "export_usermessage_batch",
-            f"--path={output_dir}",
-            f"--thread={shard_id}",
-        ]
-        if consent_message_id is not None:
-            arguments.append(f"--consent-message-id={consent_message_id}")
-
-        process = subprocess.Popen(arguments)
-        pids[process.pid] = shard_id
-
-    while pids:
-        pid, status = os.wait()
-        shard = pids.pop(pid)
-        print(f"Shard {shard} finished, status {status}")
+    files = glob.glob(os.path.join(output_dir, "messages-*.json.partial"))
+    run_parallel(
+        export_usermessages_batch,
+        files,
+        processes,
+        initializer=usermessage_process_initializer,
+        initargs=(consent_message_id,),
+        report_every=10,
+        report=lambda count: logging.info("Successfully processed %s message files", count),
+    )
 
 
 def do_export_user(user_profile: UserProfile, output_dir: Path) -> None:
@@ -2383,7 +2451,7 @@ def get_consented_user_ids(consent_message_id: int) -> Set[int]:
 def export_realm_wrapper(
     realm: Realm,
     output_dir: str,
-    threads: int,
+    processes: int,
     upload: bool,
     public_only: bool,
     percent_callback: Optional[Callable[[Any], None]] = None,
@@ -2393,7 +2461,7 @@ def export_realm_wrapper(
     tarball_path = do_export_realm(
         realm=realm,
         output_dir=output_dir,
-        threads=threads,
+        processes=processes,
         public_only=public_only,
         consent_message_id=consent_message_id,
         export_as_active=export_as_active,

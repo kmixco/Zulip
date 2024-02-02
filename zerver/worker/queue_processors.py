@@ -1129,7 +1129,7 @@ class DeferredWorker(QueueProcessingWorker):
                 public_url = export_realm_wrapper(
                     realm=realm,
                     output_dir=output_dir,
-                    threads=1 if self.threaded else 6,
+                    processes=1 if self.threaded else 6,
                     upload=True,
                     public_only=True,
                 )

@@ -3,7 +3,6 @@ import os
 import random
 import shutil
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import (
     AbstractSet,
     Any,
@@ -29,6 +28,7 @@ from typing_extensions import TypeAlias
 
 from zerver.data_import.sequencer import NEXT_ID
 from zerver.lib.avatar_hash import user_avatar_path_from_ids
+from zerver.lib.parallel import ParallelRecordType, run_parallel
 from zerver.lib.stream_color import STREAM_ASSIGNMENT_COLORS as STREAM_COLORS
 from zerver.models import (
     Attachment,
@@ -618,30 +618,17 @@ def process_avatars(
     return avatar_list + avatar_original_list
 
 
-ListJobData = TypeVar("ListJobData")
-
-
-def wrapping_function(f: Callable[[ListJobData], None], item: ListJobData) -> None:
-    try:
-        f(item)
-    except Exception:
-        logging.exception("Error processing item: %s", item, stack_info=True)
-
-
 def run_parallel_wrapper(
-    f: Callable[[ListJobData], None], full_items: List[ListJobData], threads: int = 6
+    f: Callable[[ParallelRecordType], None], full_items: List[ParallelRecordType], threads: int = 6
 ) -> None:
     logging.info("Distributing %s items across %s threads", len(full_items), threads)
-
-    with ProcessPoolExecutor(max_workers=threads) as executor:
-        count = 0
-        for future in as_completed(
-            executor.submit(wrapping_function, f, item) for item in full_items
-        ):
-            future.result()
-            count += 1
-            if count % 1000 == 0:
-                logging.info("Finished %s items", count)
+    run_parallel(
+        f,
+        full_items,
+        threads,
+        catch=True,
+        report=lambda count: logging.info("Finished %s items", count),
+    )
 
 
 def get_uploads(upload_dir: str, upload: List[str]) -> None:
