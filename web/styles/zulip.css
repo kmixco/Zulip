@@ -826,6 +826,11 @@ strong {
                 right: 8px;
                 display: inline-block;
             }
+
+            i.zulip-icon-bot {
+                font-size: 13px;
+                margin-top: 3px;
+            }
         }
     }
 
@@ -1352,6 +1357,13 @@ td.pointer {
         .private_message_header_name {
             overflow: hidden;
             text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            gap: var(--margin-lefthand-bot-icon-offset);
+
+            i.zulip-icon-bot {
+                font-size: 12px;
+            }
         }
     }
 }
@@ -1852,6 +1864,10 @@ div.focused-message-list {
             margin-right: -12px;
             font-size: 0.8em;
             color: hsl(96deg 7% 73%);
+        }
+
+        & a i {
+            color: hsl(0deg 0% 100%);
         }
     }
 
