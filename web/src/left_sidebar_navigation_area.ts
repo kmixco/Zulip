@@ -1,5 +1,6 @@
 import $ from "jquery";
 
+import * as alert_words from "./alert_words";
 import type {Filter} from "./filter";
 import {localstorage} from "./localstorage";
 import {page_params} from "./page_params";
@@ -51,6 +52,16 @@ export function update_scheduled_messages_row(): void {
     ui_util.update_unread_count_in_dom($scheduled_li, count);
 }
 
+export function update_alert_messages_row(): void {
+    const $alerted_li = $(".top_left_alerts");
+    const alert_words_set = alert_words.get_word_list().length > 0;
+    if (alert_words_set) {
+        $alerted_li.show();
+    } else {
+        $alerted_li.hide();
+    }
+}
+
 export function update_dom_with_unread_counts(
     counts: unread.FullUnreadCountsData,
     skip_animations: boolean,
@@ -59,11 +70,13 @@ export function update_dom_with_unread_counts(
 
     // mentioned/home views have simple integer counts
     const $mentioned_li = $(".top_left_mentions");
+    const $alerted_li = $(".top_left_alerts");
     const $home_view_li = $(".selected-home-view");
     const $streams_header = $("#streams_header");
     const $back_to_streams = $("#topics_header");
 
     ui_util.update_unread_count_in_dom($mentioned_li, counts.mentioned_message_count);
+    ui_util.update_unread_count_in_dom($alerted_li, counts.alert_message_count);
     ui_util.update_unread_count_in_dom($home_view_li, counts.home_unread_messages);
     ui_util.update_unread_count_in_dom($streams_header, counts.stream_unread_messages);
     ui_util.update_unread_count_in_dom($back_to_streams, counts.stream_unread_messages);
@@ -84,6 +97,7 @@ function deselect_top_left_corner_items(): void {
     remove($(".top_left_all_messages"));
     remove($(".top_left_starred_messages"));
     remove($(".top_left_mentions"));
+    remove($(".top_left_alerts"));
     remove($(".top_left_recent_view"));
     remove($(".top_left_inbox"));
 }
@@ -106,12 +120,26 @@ export function handle_narrow_activated(filter: Filter): void {
     ops = filter.operands("is");
     if (ops.length >= 1) {
         filter_name = ops[0];
-        if (filter_name === "starred") {
-            $filter_li = $(".top_left_starred_messages");
-            $filter_li.addClass("active-filter");
-        } else if (filter_name === "mentioned") {
-            $filter_li = $(".top_left_mentions");
-            $filter_li.addClass("active-filter");
+        switch (filter_name) {
+            case "starred": {
+                $filter_li = $(".top_left_starred_messages");
+                $filter_li.addClass("active-filter");
+
+                break;
+            }
+            case "mentioned": {
+                $filter_li = $(".top_left_mentions");
+                $filter_li.addClass("active-filter");
+
+                break;
+            }
+            case "alerted": {
+                $filter_li = $(".top_left_alerts");
+                $filter_li.addClass("active-filter");
+
+                break;
+            }
+            // No default
         }
     }
 }
@@ -230,6 +258,8 @@ export function handle_home_view_changed(new_home_view: string): void {
 
 export function initialize(): void {
     update_scheduled_messages_row();
+    update_alert_messages_row();
+
     restore_views_state();
 
     $("body").on(
