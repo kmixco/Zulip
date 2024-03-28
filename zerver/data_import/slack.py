@@ -12,6 +12,7 @@ from email.headerregistry import Address
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Type, TypeVar
 from urllib.parse import urlsplit
 
+import markdownify
 import orjson
 import requests
 from django.conf import settings
@@ -832,10 +833,15 @@ def get_messages_iterator(
                     # skipping those messages is simpler.
                     continue
                 if message.get("mimetype") == "application/vnd.slack-docs":
-                    # This is a Slack "Post" which is HTML-formatted,
-                    # and we don't have a clean way to import at the
-                    # moment.  We skip them on import.
-                    continue
+                    # This is a Slack "Post" which is HTML-formatted
+                    file_url = message.get("url_private_download")
+                    response = requests.get(file_url)
+                    response.encoding = "utf-8"
+                    # response encoding to "utf-8" is required to specify encoding for response.text
+                    text = markdownify.markdownify(response.text, heading_style="ATX")
+                    # markdownify is used to convert text from HTML to Markdown format
+                    message["text"] = "*Imported from Slack Canvas*\n" + text
+                    message["ts"] = message.get("created")
                 if dir_name in added_channels:
                     message["channel_name"] = dir_name
                 elif dir_name in added_mpims:

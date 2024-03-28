@@ -195,6 +195,7 @@ beautifulsoup4==4.12.3 \
     --hash=sha256:b80878c9f40111313e55da8ba20bdba06d8fa3969fc68304167741bbf9e082ed
     # via
     #   -r requirements/common.in
+    #   markdownify
     #   pyoembed
     #   zulip-bots
 black==24.3.0 \
@@ -1478,6 +1479,10 @@ markdown-it-py==3.0.0 \
     #   mdit-py-plugins
     #   myst-parser
     #   rich
+markdownify==0.11.6 \
+    --hash=sha256:009b240e0c9f4c8eaf1d085625dcd4011e12f0f8cec55dedf9ea6f7655e49bfe \
+    --hash=sha256:ba35fe289d5e9073bcd7d2cad629278fe25f1a93741fcdc0bfb4f009076d8324
+    # via -r requirements/common.in
 markupsafe==2.1.5 \
     --hash=sha256:00e046b6dd71aa03a41079792f8473dc494d564611a8f89bbbd7cb93295ebdcf \
     --hash=sha256:075202fa5b72c86ad32dc7d0b56024ebdbcf2048c0ba09f1cde31bfdd57bcfff \
@@ -2770,6 +2775,7 @@ six==1.16.0 \
     #   django-bitfield
     #   html5lib
     #   isodate
+    #   markdownify
     #   python-binary-memcached
     #   python-dateutil
     #   rfc3339-validator
