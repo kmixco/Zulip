@@ -21,8 +21,8 @@ from zerver.lib.email_mirror_helpers import (
     decode_email_address,
     get_email_gateway_message_string_from_address,
 )
-from zerver.lib.email_notifications import convert_html_to_markdown
 from zerver.lib.exceptions import JsonableError, RateLimitedError
+from zerver.lib.html_to_markdown import convert_html_to_markdown
 from zerver.lib.message import normalize_body, truncate_content, truncate_topic
 from zerver.lib.queue import queue_json_publish
 from zerver.lib.rate_limiter import RateLimitedObject
