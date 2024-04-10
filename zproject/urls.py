@@ -64,6 +64,7 @@ from zerver.views.health import health
 from zerver.views.home import accounts_accept_terms, desktop_home, home
 from zerver.views.hotspots import mark_onboarding_step_as_read
 from zerver.views.invite import (
+    edit_multiuse_invite,
     generate_multiuse_invite_backend,
     get_user_invites,
     invite_users_backend,
@@ -321,7 +322,11 @@ v1_api_and_json_patterns = [
     # invites/multiuse -> zerver.views.invite
     rest_path("invites/multiuse", POST=generate_multiuse_invite_backend),
     # invites/multiuse -> zerver.views.invite
-    rest_path("invites/multiuse/<int:invite_id>", DELETE=revoke_multiuse_invite),
+    rest_path(
+        "invites/multiuse/<int:invite_id>",
+        DELETE=revoke_multiuse_invite,
+        PATCH=edit_multiuse_invite,
+    ),
     # mark messages as read (in bulk)
     rest_path("mark_all_as_read", POST=mark_all_as_read),
     rest_path("mark_stream_as_read", POST=mark_stream_as_read),

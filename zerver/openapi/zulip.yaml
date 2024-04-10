@@ -12187,6 +12187,116 @@ paths:
                           to subscribe other users to streams and `stream_ids` is not empty.
 
   /invites/multiuse/{invite_id}:
+    patch:
+      operationId: edit-invite-link
+      summary: Edit a reusable invitation link
+      tags: ["invites"]
+      description: |
+        [Edit a reusable invitation link](/help/invite-new-users#edit-a-reusable-invitation-link)
+        which can be used to invite new users to the organization.
+
+        **Changes**: In Zulip 8.0 (feature level 209), added support for non-admin
+        users [with permission](/help/restrict-account-creation#change-who-can-send-invitations)
+        to use this endpoint. Previously, it was restricted to administrators only.
+      parameters:
+        - name: invite_id
+          in: path
+          description: |
+            The ID of the multiuse invitation to be edited.
+          schema:
+            type: integer
+          example: 1
+          required: true
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - invite_as
+                - stream_ids
+              properties:
+                invite_as:
+                  $ref: "#/components/schemas/InviteRoleParameter"
+                stream_ids:
+                  description: |
+                    A list containing the [IDs of the streams](/api/get-stream-id) that the
+                    newly created user will be automatically subscribed to if the invitation
+                    is accepted. If unspecified, it will be set to empty list. If the list is
+                    empty, then the new user will not be subscribed to any streams.
+                  type: array
+                  items:
+                    type: integer
+                  default: []
+                  example: [7, 9]
+            encoding:
+              stream_ids:
+                contentType: application/json
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/JsonSuccessBase"
+                  - additionalProperties: false
+                    properties:
+                      result: {}
+                      msg: {}
+                      ignored_parameters_unsupported: {}
+                    example: {"result": "success", "msg": ""}
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Insufficient permission",
+                            "result": "error",
+                          }
+                        description: |
+                          An example JSON error response for when the user doesn't have permission
+                          to edit invitations.
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Must be an organization administrator",
+                            "result": "error",
+                          }
+                        description: |
+                          An example JSON error response occurs when the user attempts to edit an invitation link for a role higher than their own.
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Invalid channel ID 11. No invites were sent.",
+                            "result": "error",
+                          }
+                        description: |
+                          An example JSON error response for when any of the specified streams
+                          does not exist or the user does not have permission to access one of
+                          the targeted streams.
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "You do not have permission to subscribe other users to channels.",
+                            "result": "error",
+                          }
+                        description: |
+                          An example JSON error response for when the user doesn't have permission
+                          to subscribe other users to streams and `stream_ids` is not empty.
     delete:
       operationId: revoke-reusable-invite
       summary: Revoke a reusable invitation

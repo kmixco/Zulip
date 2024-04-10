@@ -408,6 +408,20 @@ def do_get_invites_controlled_by_user(user_profile: UserProfile) -> List[Dict[st
     return invites
 
 
+def do_edit_multiuse_invite_link(
+    multiuse_invite: MultiuseInvite,
+    invited_as: int,
+    streams: Sequence[Stream],
+) -> None:
+    # The `streams` and `invited_as` fields of a `multiuse_invite` can be edited.
+    multiuse_invite.streams.set(streams)
+    multiuse_invite.invited_as = invited_as
+    multiuse_invite.save()
+
+    realm = multiuse_invite.referred_by.realm
+    notify_invites_changed(realm)
+
+
 def get_valid_invite_confirmations_generated_by_user(
     user_profile: UserProfile,
 ) -> List[Confirmation]:
