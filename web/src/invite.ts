@@ -323,6 +323,7 @@ function open_invite_user_modal(e: JQuery.ClickEvent<Document, undefined>): void
     e.stopPropagation();
     e.preventDefault();
 
+    const streams = get_invite_streams();
     const time_unit_choices = ["minutes", "hours", "days", "weeks"];
     const html_body = render_invite_user_modal({
         is_admin: current_user.is_admin,
@@ -350,6 +351,11 @@ function open_invite_user_modal(e: JQuery.ClickEvent<Document, undefined>): void
         const $pill_input = $("#invitee_emails_container .pill-container .input");
 
         $("#invite-user-modal .dialog_submit_button").prop("disabled", true);
+
+        const default_stream = streams.filter((stream) => stream.default_stream);
+        for (const stream of default_stream) {
+            $(`input[value=${stream.stream_id}]`).prop("checked", true);
+        }
 
         const user_has_email_set = !settings_data.user_email_not_configured();
 
