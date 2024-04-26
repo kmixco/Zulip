@@ -1,9 +1,7 @@
 # See https://zulip.readthedocs.io/en/latest/subsystems/notifications.html
 
 import logging
-import os
 import re
-import subprocess
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -924,17 +922,3 @@ def enqueue_welcome_emails(user: UserProfile, realm_creation: bool = False) -> N
             context=onboarding_team_to_zulip_context,
             delay=onboarding_email_schedule["onboarding_team_to_zulip"],
         )
-
-
-def convert_html_to_markdown(html: str) -> str:
-    # html2text is GPL licensed, so run it as a subprocess.
-    markdown = subprocess.check_output(
-        [os.path.join(sys.prefix, "bin", "html2text")], input=html, text=True
-    ).strip()
-
-    # We want images to get linked and inline previewed, but html2text will turn
-    # them into links of the form `![](http://foo.com/image.png)`, which is
-    # ugly. Run a regex over the resulting description, turning links of the
-    # form `![](http://foo.com/image.png?12345)` into
-    # `[image.png](http://foo.com/image.png)`.
-    return re.sub("!\\[\\]\\((\\S*)/(\\S*)\\?(\\S*)\\)", "[\\2](\\1/\\2)", markdown)

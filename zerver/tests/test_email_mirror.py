@@ -32,7 +32,7 @@ from zerver.lib.email_mirror_helpers import (
     encode_email_address,
     get_email_gateway_message_string_from_address,
 )
-from zerver.lib.email_notifications import convert_html_to_markdown
+from zerver.lib.html_to_markdown import convert_html_to_markdown
 from zerver.lib.send_email import FromAddress
 from zerver.lib.streams import ensure_stream
 from zerver.lib.test_classes import ZulipTestCase
