@@ -354,6 +354,8 @@ def do_get_invites_controlled_by_user(user_profile: UserProfile) -> List[Dict[st
 
     for invitee in prereg_users:
         assert invitee.referred_by is not None
+        streams = invitee.streams.all()
+        stream_ids = [stream.id for stream in streams]
         invites.append(
             dict(
                 email=invitee.email,
@@ -363,6 +365,7 @@ def do_get_invites_controlled_by_user(user_profile: UserProfile) -> List[Dict[st
                 id=invitee.id,
                 invited_as=invitee.invited_as,
                 is_multiuse=False,
+                stream_ids=stream_ids,
             )
         )
 
@@ -399,9 +402,24 @@ def do_get_invites_controlled_by_user(user_profile: UserProfile) -> List[Dict[st
                 ),
                 invited_as=invite.invited_as,
                 is_multiuse=True,
+                stream_ids=list(invite.streams.values_list("id", flat=True)),
             )
         )
     return invites
+
+
+def do_edit_multiuse_invite_link(
+    multiuse_invite: MultiuseInvite,
+    invited_as: int,
+    streams: Sequence[Stream],
+) -> None:
+    # The `streams` and `invited_as` fields of a `multiuse_invite` can be edited.
+    multiuse_invite.streams.set(streams)
+    multiuse_invite.invited_as = invited_as
+    multiuse_invite.save()
+
+    realm = multiuse_invite.referred_by.realm
+    notify_invites_changed(realm)
 
 
 def get_valid_invite_confirmations_generated_by_user(
