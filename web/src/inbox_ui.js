@@ -197,6 +197,9 @@ function format_dm(user_ids_string, unread_count, latest_msg_id) {
         is_hidden: filter_should_hide_row({dm_key: user_ids_string}),
         is_collapsed: collapsed_containers.has("inbox-dm-header"),
         latest_msg_id,
+        mention_in_unread_dms: unread.dms_has_mention(
+            unread.get_msg_ids_for_user_ids_string(user_ids_string),
+        ),
     };
 
     return context;
@@ -451,6 +454,7 @@ function reset_data() {
     const unread_dms = unread.get_unread_pm();
     const unread_dms_count = unread_dms.total_count;
     const unread_dms_dict = unread_dms.pm_dict;
+    const mention_in_unread_dms = unread.dms_has_mention(unread.get_msg_ids_for_dms());
 
     const unread_stream_message = unread.get_unread_topics();
     const unread_stream_msg_count = unread_stream_message.stream_unread_messages;
@@ -492,6 +496,7 @@ function reset_data() {
     const is_dms_collapsed = collapsed_containers.has("inbox-dm-header");
 
     return {
+        mention_in_unread_dms,
         unread_dms_count,
         is_dms_collapsed,
         has_dms_post_filter,
@@ -1056,6 +1061,8 @@ export function update() {
         $inbox_dm_header.addClass("hidden_by_filters");
     } else {
         $inbox_dm_header.removeClass("hidden_by_filters");
+        const mention_in_unread_dms = unread.dms_has_mention(unread.get_msg_ids_for_dms());
+        $inbox_dm_header.find(".unread_mention_info").text(mention_in_unread_dms ? "@" : "");
         $inbox_dm_header.find(".unread_count").text(unread_dms_count);
     }
 
