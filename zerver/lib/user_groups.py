@@ -6,7 +6,7 @@ from typing import TypedDict
 
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import F, QuerySet
+from django.db.models import F, Q, QuerySet
 from django.utils.timezone import now as timezone_now
 from django.utils.translation import gettext as _
 from django_cte import With
@@ -52,6 +52,7 @@ class UserGroupDict(TypedDict):
     is_system_group: bool
     can_manage_group: int | AnonymousSettingGroupDict
     can_mention_group: int | AnonymousSettingGroupDict
+    deactivated: bool
 
 
 @dataclass
@@ -121,6 +122,75 @@ def access_user_group_by_id(
 
     if not has_user_group_access(user_group, user_profile, for_read=for_read, as_subgroup=False):
         raise JsonableError(_("Insufficient permission"))
+
+    return user_group
+
+
+def access_user_group_for_deactivation(
+    user_group_id: int, user_profile: UserProfile
+) -> NamedUserGroup:
+    user_group = access_user_group_by_id(user_group_id, user_profile, for_read=False)
+
+    if (
+        user_group.direct_supergroups.exclude(named_user_group=None)
+        .filter(named_user_group__deactivated=False)
+        .exists()
+    ):
+        raise JsonableError(
+            _("You cannot deactivate a user group that is subgroup of any user group.")
+        )
+
+    anonymous_supergroup_ids = user_group.direct_supergroups.filter(
+        named_user_group=None
+    ).values_list("id", flat=True)
+
+    setting_group_ids_using_deactivating_user_group = [
+        *list(anonymous_supergroup_ids),
+        user_group.id,
+    ]
+
+    if Stream.objects.filter(
+        realm_id=user_group.realm_id,
+        deactivated=False,
+        can_remove_subscribers_group_id__in=setting_group_ids_using_deactivating_user_group,
+    ).exists():
+        raise JsonableError(_("You cannot deactivate a user group which is used for setting."))
+
+    if (
+        NamedUserGroup.objects.filter(realm_id=user_group.realm_id, deactivated=False)
+        .filter(
+            Q(can_manage_group_id__in=setting_group_ids_using_deactivating_user_group)
+            | Q(can_mention_group_id__in=setting_group_ids_using_deactivating_user_group)
+        )
+        .exists()
+    ):
+        raise JsonableError(_("You cannot deactivate a user group which is used for setting."))
+
+    if (
+        Realm.objects.filter(id=user_group.realm_id)
+        .filter(
+            Q(create_multiuse_invite_group_id__in=setting_group_ids_using_deactivating_user_group)
+            | Q(can_access_all_users_group_id__in=setting_group_ids_using_deactivating_user_group)
+            | Q(
+                can_create_public_channel_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+            | Q(
+                can_create_private_channel_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+            | Q(
+                can_create_web_public_channel_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+            | Q(can_delete_any_message_group_id__in=setting_group_ids_using_deactivating_user_group)
+            | Q(
+                direct_message_initiator_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+            | Q(
+                direct_message_permission_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+        )
+        .exists()
+    ):
+        raise JsonableError(_("You cannot deactivate a user group which is used for setting."))
 
     return user_group
 
@@ -429,6 +499,7 @@ def user_groups_in_realm_serialized(realm: Realm) -> list[UserGroupDict]:
             can_mention_group=get_setting_value_for_user_group_object(
                 user_group.can_mention_group, group_members, group_subgroups
             ),
+            deactivated=user_group.deactivated,
         )
 
     for group_dict in group_dicts.values():
