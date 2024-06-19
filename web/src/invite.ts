@@ -30,6 +30,7 @@ import * as stream_pill from "./stream_pill";
 import * as timerender from "./timerender";
 import type {HTMLSelectOneElement} from "./types";
 import * as ui_report from "./ui_report";
+import * as util from "./util";
 
 let custom_expiration_time_input = 10;
 let custom_expiration_time_unit = "days";
@@ -64,7 +65,10 @@ function get_common_invitation_data(): {
     if (raw_expires_in === "null") {
         expires_in = null;
     } else if (raw_expires_in === "custom") {
-        expires_in = get_expiration_time_in_minutes();
+        expires_in = util.get_custom_time_in_minutes(
+            custom_expiration_time_unit,
+            custom_expiration_time_input,
+        );
     } else {
         expires_in = Number.parseFloat(raw_expires_in);
     }
@@ -148,7 +152,10 @@ function submit_invitation_form(): void {
             if ($expires_in.val() === "custom") {
                 // Hide the custom inputs if the custom input is set
                 // to one of the dropdown's standard options.
-                const time_in_minutes = get_expiration_time_in_minutes();
+                const time_in_minutes = util.get_custom_time_in_minutes(
+                    custom_expiration_time_unit,
+                    custom_expiration_time_input,
+                );
                 for (const option of Object.values(settings_config.expires_in_values)) {
                     if (option.value === time_in_minutes) {
                         $("#custom-invite-expiration-time").hide();
@@ -263,24 +270,18 @@ function valid_to(time_valid: number): string {
     return $t({defaultMessage: "Expires on {date} at {time}"}, {date, time});
 }
 
-function get_expiration_time_in_minutes(): number {
-    switch (custom_expiration_time_unit) {
-        case "hours":
-            return custom_expiration_time_input * 60;
-        case "days":
-            return custom_expiration_time_input * 24 * 60;
-        case "weeks":
-            return custom_expiration_time_input * 7 * 24 * 60;
-        default:
-            return custom_expiration_time_input;
-    }
-}
-
 function set_expires_on_text(): void {
     const $expires_in = $<HTMLSelectOneElement>("select:not([multiple])#expires_in");
     if ($expires_in.val() === "custom") {
         $("#expires_on").hide();
-        $("#custom_expires_on").text(valid_to(get_expiration_time_in_minutes()));
+        $("#custom_expires_on").text(
+            valid_to(
+                util.get_custom_time_in_minutes(
+                    custom_expiration_time_unit,
+                    custom_expiration_time_input,
+                ),
+            ),
+        );
     } else {
         $("#expires_on").show();
         $("#expires_on").text(valid_to(Number.parseFloat($expires_in.val()!)));
@@ -420,7 +421,14 @@ function open_invite_user_modal(e: JQuery.ClickEvent<Document, undefined>): void
             custom_expiration_time_unit = $<HTMLSelectOneElement>(
                 "select:not([multiple])#custom-expiration-time-unit",
             ).val()!;
-            $("#custom_expires_on").text(valid_to(get_expiration_time_in_minutes()));
+            $("#custom_expires_on").text(
+                valid_to(
+                    util.get_custom_time_in_minutes(
+                        custom_expiration_time_unit,
+                        custom_expiration_time_input,
+                    ),
+                ),
+            );
         });
 
         $("#invite_check_all_button").on("click", () => {
