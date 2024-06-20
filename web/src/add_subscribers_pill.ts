@@ -55,6 +55,7 @@ function set_up_pill_typeahead({
         stream: true,
         user_group: true,
         user: true,
+        only_show_user_groups_editable_by_user: false,
     };
     pill_typeahead.set_up_combined($pill_container.find(".input"), pill_widget, opts);
 }
@@ -66,8 +67,13 @@ export function create({
     $pill_container: JQuery;
     get_potential_subscribers: () => User[];
 }): input_pill.InputPillContainer<CombinedPillItem> {
+    const pill_config = {
+        show_user_group_size: true,
+    };
+
     const pill_widget = input_pill.create<CombinedPillItem>({
         $container: $pill_container,
+        pill_config,
         create_item_from_text,
         get_text_from_item,
     });
