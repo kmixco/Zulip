@@ -1648,6 +1648,7 @@ class NormalActionsTest(BaseAction):
                 emoji_code="1f697",
                 reaction_type=UserStatus.UNICODE_EMOJI,
                 client_id=client.id,
+                scheduled_end_time=None,
             )
 
         check_user_status(
@@ -1676,6 +1677,7 @@ class NormalActionsTest(BaseAction):
                 emoji_code="",
                 reaction_type=UserStatus.UNICODE_EMOJI,
                 client_id=client.id,
+                scheduled_end_time=None,
             )
 
         check_user_status(
@@ -1704,6 +1706,7 @@ class NormalActionsTest(BaseAction):
                 emoji_code=None,
                 reaction_type=None,
                 client_id=client.id,
+                scheduled_end_time=None,
             )
 
         check_user_status("events[0]", events[0], {"away"})
@@ -1727,6 +1730,7 @@ class NormalActionsTest(BaseAction):
                 emoji_code=None,
                 reaction_type=None,
                 client_id=client.id,
+                scheduled_end_time=None,
             )
 
         check_user_status("events[0]", events[0], {"status_text"})
@@ -1751,6 +1755,7 @@ class NormalActionsTest(BaseAction):
                     emoji_code="1f697",
                     reaction_type=UserStatus.UNICODE_EMOJI,
                     client_id=client.id,
+                    scheduled_end_time=None,
                 )
 
         away_val = True
@@ -1763,6 +1768,7 @@ class NormalActionsTest(BaseAction):
                 emoji_code=None,
                 reaction_type=None,
                 client_id=client.id,
+                scheduled_end_time=None,
             )
         check_presence(
             "events[0]",
@@ -1772,6 +1778,68 @@ class NormalActionsTest(BaseAction):
             # set the field to 'website' for backwards compatibility.
             presence_key="website",
             status="idle",
+        )
+
+    def test_clear_status_events(self) -> None:
+        client = get_client("website")
+
+        with self.verify_action(num_events=4, state_change_expected=True) as events:
+            do_update_user_status(
+                user_profile=self.user_profile,
+                away=True,
+                status_text="out to lunch",
+                emoji_name="car",
+                emoji_code="1f697",
+                reaction_type=UserStatus.UNICODE_EMOJI,
+                client_id=client.id,
+                scheduled_end_time=1706625127,
+            )
+
+        check_user_status(
+            "events[0]",
+            events[0],
+            {
+                "away",
+                "status_text",
+                "emoji_name",
+                "emoji_code",
+                "reaction_type",
+                "scheduled_end_time",
+            },
+        )
+
+    def test_update_scheduled_end_time_events(self) -> None:
+        client = get_client("website")
+
+        do_update_user_status(
+            user_profile=self.user_profile,
+            away=True,
+            status_text="out to lunch",
+            emoji_name="car",
+            emoji_code="1f697",
+            reaction_type=UserStatus.UNICODE_EMOJI,
+            client_id=client.id,
+            scheduled_end_time=1706625127,
+        )
+
+        with self.verify_action(num_events=1, state_change_expected=True) as events:
+            do_update_user_status(
+                user_profile=self.user_profile,
+                away=None,
+                status_text=None,
+                emoji_name=None,
+                emoji_code=None,
+                reaction_type=None,
+                client_id=client.id,
+                scheduled_end_time=1706625129,
+            )
+
+        check_user_status(
+            "events[0]",
+            events[0],
+            {
+                "scheduled_end_time",
+            },
         )
 
     def test_user_group_events(self) -> None:
