@@ -1,13 +1,17 @@
 from datetime import timedelta
-from typing import Iterable, Optional, Union
+from typing import Iterable, List, Optional, Union
 
+import orjson
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from django.utils.timezone import now as timezone_now
+from django.utils.translation import gettext as _
+from django.utils.translation import override as override_language
 
 from confirmation.models import Confirmation, create_confirmation_link
 from confirmation.settings import STATUS_REVOKED
+from zerver.actions.message_send import internal_send_private_message
 from zerver.actions.presence import do_update_user_presence
 from zerver.lib.avatar import avatar_url
 from zerver.lib.cache import (
@@ -18,11 +22,14 @@ from zerver.lib.cache import (
 )
 from zerver.lib.create_user import get_display_email_address
 from zerver.lib.i18n import get_language_name
+from zerver.lib.mention import silent_mention_syntax_for_user
 from zerver.lib.queue import queue_json_publish
 from zerver.lib.send_email import FromAddress, clear_scheduled_emails, send_email
 from zerver.lib.timezone import canonicalize_timezone
+from zerver.lib.types import ProfileDataElement
 from zerver.lib.upload import delete_avatar_image
 from zerver.lib.users import (
+    access_user_by_id,
     can_access_delivery_email,
     check_bot_name_available,
     check_full_name,
@@ -32,6 +39,7 @@ from zerver.lib.users import (
 )
 from zerver.lib.utils import generate_api_key
 from zerver.models import (
+    CustomProfileField,
     Draft,
     EmailChangeStatus,
     RealmAuditLog,
@@ -41,7 +49,7 @@ from zerver.models import (
     UserProfile,
 )
 from zerver.models.clients import get_client
-from zerver.models.users import bot_owner_user_ids, get_user_profile_by_id
+from zerver.models.users import bot_owner_user_ids, get_system_bot, get_user_profile_by_id
 from zerver.tornado.django_api import send_event, send_event_on_commit
 
 
@@ -217,6 +225,7 @@ def do_change_full_name(
     user_profile: UserProfile, full_name: str, acting_user: Optional[UserProfile]
 ) -> None:
     old_name = user_profile.full_name
+    new_name = full_name
     user_profile.full_name = full_name
     user_profile.save(update_fields=["full_name"])
     event_time = timezone_now()
@@ -226,7 +235,7 @@ def do_change_full_name(
         modified_user=user_profile,
         event_type=RealmAuditLog.USER_FULL_NAME_CHANGED,
         event_time=event_time,
-        extra_data={RealmAuditLog.OLD_VALUE: old_name, RealmAuditLog.NEW_VALUE: full_name},
+        extra_data={RealmAuditLog.OLD_VALUE: old_name, RealmAuditLog.NEW_VALUE: new_name},
     )
     payload = dict(user_id=user_profile.id, full_name=user_profile.full_name)
     send_event(
@@ -240,6 +249,7 @@ def do_change_full_name(
             dict(type="realm_bot", op="update", bot=payload),
             bot_owner_user_ids(user_profile),
         )
+    notify_users_on_updated_user_profile(acting_user, user_profile, name_field=[old_name, new_name])
 
 
 def check_change_full_name(
@@ -587,3 +597,102 @@ def do_change_user_setting(
                 force_send_update=True,
             )
         )
+
+
+def filter_changes_in_profile_data(
+    recipient_user: UserProfile,
+    profile_data: List[ProfileDataElement],
+) -> Optional[List[Union[str, List[int], None]]]:
+    old_profile_data, new_profile_data = profile_data
+    field_name = old_profile_data["name"]
+    field_type = old_profile_data["type"]
+    old_value, new_value = old_profile_data["value"], new_profile_data["value"]
+    if old_value == new_value:
+        return None
+    if field_type == CustomProfileField.SELECT:
+        if old_value is not None:
+            old_field_data = orjson.loads(old_profile_data["field_data"])
+            old_value = old_field_data[old_value]["text"]
+        if new_value is not None:
+            new_field_data = orjson.loads(new_profile_data["field_data"])
+            new_value = new_field_data[new_value]["text"]
+    if field_type == CustomProfileField.USER:
+        if old_value is not None:
+            temp_mentor_string = ""
+            assert isinstance(old_value, list)
+            for mentor_user_id in old_value:
+                assert isinstance(mentor_user_id, int)
+                mentor_user_profile = access_user_by_id(
+                    recipient_user,
+                    mentor_user_id,
+                    allow_deactivated=True,
+                    allow_bots=True,
+                    for_admin=False,
+                )
+                temp_mentor_string += silent_mention_syntax_for_user(mentor_user_profile) + " "
+            old_value = temp_mentor_string
+
+        if new_value is not None:
+            temp_mentor_string = ""
+            assert isinstance(new_value, list)
+            for mentor_user_id in new_value:
+                assert isinstance(mentor_user_id, int)
+                mentor_user_profile = access_user_by_id(
+                    recipient_user,
+                    mentor_user_id,
+                    allow_deactivated=True,
+                    allow_bots=True,
+                    for_admin=False,
+                )
+                temp_mentor_string += silent_mention_syntax_for_user(mentor_user_profile) + " "
+            new_value = temp_mentor_string
+    return [field_name, old_value, new_value]
+
+
+def notify_users_on_updated_user_profile(
+    acting_user: Optional[UserProfile],
+    recipient_user: UserProfile,
+    *,
+    name_field: Optional[List[str]] = None,
+    role_field: Optional[List[str]] = None,
+    profile_data_field: Optional[List[List[ProfileDataElement]]] = None,
+) -> None:
+    if recipient_user.is_bot or acting_user == recipient_user:
+        return
+    realm = recipient_user.realm
+    sender = get_system_bot(settings.NOTIFICATION_BOT, realm.id)
+    message = ""
+
+    with override_language(recipient_user.default_language):
+        message = _("The following updates have been made to your account.")
+        if acting_user is not None:
+            message = _("{user_full_name} has made the following changes to your profile.").format(
+                user_full_name=silent_mention_syntax_for_user(acting_user),
+            )
+        if name_field is not None:
+            message += _(
+                "\n- **Old `name`:** {old_full_name}\n- **New `name`:** {new_full_name}"
+            ).format(
+                old_full_name=name_field[0],
+                new_full_name=name_field[1],
+            )
+        if role_field is not None:
+            message += _("\n- **Old `role`:** {old_role}\n- **New `role`:** {new_role}").format(
+                old_role=role_field[0],
+                new_role=role_field[1],
+            )
+        if profile_data_field is not None:
+            for profile_data in profile_data_field:
+                values = filter_changes_in_profile_data(recipient_user, profile_data)
+                if not values:
+                    continue
+                field_name, old_value, new_value = values
+                message += _(
+                    "\n- **Old `{field_name}`:** {old_value}\n- **New `{field_name}`:** {new_value}"
+                ).format(
+                    field_name=field_name,
+                    old_value=old_value,
+                    new_value=new_value,
+                )
+
+    internal_send_private_message(sender=sender, recipient_user=recipient_user, content=message)

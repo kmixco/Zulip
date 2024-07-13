@@ -1420,7 +1420,7 @@ class NormalActionsTest(BaseAction):
             "id": field_id,
             "value": "New value",
         }
-        with self.verify_action() as events:
+        with self.verify_action(num_events=2) as events:
             do_update_user_custom_profile_data_if_changed(self.user_profile, [field])
         check_realm_user_update("events[0]", events[0], "custom_profile_field")
         self.assertEqual(
@@ -1435,7 +1435,7 @@ class NormalActionsTest(BaseAction):
             "id": field_id,
             "value": [self.example_user("ZOE").id],
         }
-        with self.verify_action() as events:
+        with self.verify_action(num_events=2) as events:
             do_update_user_custom_profile_data_if_changed(self.user_profile, [field])
         check_realm_user_update("events[0]", events[0], "custom_profile_field")
         self.assertEqual(events[0]["person"]["custom_profile_field"].keys(), {"id", "value"})
@@ -1458,7 +1458,7 @@ class NormalActionsTest(BaseAction):
             do_update_user_custom_profile_data_if_changed(cordelia, [field])
 
         hamlet = self.example_user("hamlet")
-        with self.verify_action() as events:
+        with self.verify_action(num_events=2) as events:
             do_update_user_custom_profile_data_if_changed(hamlet, [field])
         check_realm_user_update("events[0]", events[0], "custom_profile_field")
         self.assertEqual(events[0]["person"]["custom_profile_field"].keys(), {"id", "value"})
@@ -2308,9 +2308,9 @@ class NormalActionsTest(BaseAction):
 
         for role in [UserProfile.ROLE_REALM_ADMINISTRATOR, UserProfile.ROLE_MEMBER]:
             if role == UserProfile.ROLE_REALM_ADMINISTRATOR:
-                num_events = 6
+                num_events = 7
             else:
-                num_events = 5
+                num_events = 6
 
             with self.verify_action(num_events=num_events) as events:
                 do_change_user_role(self.user_profile, role, acting_user=None)
@@ -2361,9 +2361,9 @@ class NormalActionsTest(BaseAction):
 
         for role in [UserProfile.ROLE_REALM_OWNER, UserProfile.ROLE_MEMBER]:
             if role == UserProfile.ROLE_REALM_OWNER:
-                num_events = 6
+                num_events = 7
             else:
-                num_events = 5
+                num_events = 6
             with self.verify_action(num_events=num_events) as events:
                 do_change_user_role(self.user_profile, role, acting_user=None)
             check_realm_user_update("events[0]", events[0], "role")
@@ -2390,7 +2390,7 @@ class NormalActionsTest(BaseAction):
 
         do_change_user_role(self.user_profile, UserProfile.ROLE_MEMBER, acting_user=None)
         for role in [UserProfile.ROLE_MODERATOR, UserProfile.ROLE_MEMBER]:
-            with self.verify_action(num_events=4) as events:
+            with self.verify_action(num_events=5) as events:
                 do_change_user_role(self.user_profile, role, acting_user=None)
             check_realm_user_update("events[0]", events[0], "role")
             self.assertEqual(events[0]["person"]["role"], role)
@@ -2420,9 +2420,9 @@ class NormalActionsTest(BaseAction):
                 # When changing role from guest to member, peer_add events are also sent
                 # to make sure the subscribers info is provided to the clients for the
                 # streams added by stream creation event.
-                num_events = 7
+                num_events = 8
             else:
-                num_events = 5
+                num_events = 6
             with self.verify_action(num_events=num_events) as events:
                 do_change_user_role(self.user_profile, role, acting_user=None)
             check_realm_user_update("events[0]", events[0], "role")
