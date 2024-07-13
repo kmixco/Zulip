@@ -201,6 +201,7 @@ export function dispatch_normal_event(event) {
                 allow_edit_history: noop,
                 allow_message_editing: noop,
                 edit_topic_policy: noop,
+                can_resolve_topics_group: noop,
                 user_group_edit_policy: noop,
                 avatar_changes_disabled: settings_account.update_avatar_change_display,
                 bot_creation_policy: settings_bots.update_bot_permissions_ui,
@@ -309,7 +310,10 @@ export function dispatch_normal_event(event) {
                                     compose_recipient.check_posting_policy_for_compose_box();
                                 }
 
-                                if (key === "edit_topic_policy") {
+                                if (
+                                    key === "edit_topic_policy" ||
+                                    key === "can_resolve_topics_group"
+                                ) {
                                     message_live_update.rerender_messages_view();
                                 }
                             }

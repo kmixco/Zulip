@@ -248,7 +248,9 @@ export function is_user_in_group(user_group_id: number, user_id: number): boolea
 
 function get_display_name_for_system_group_option(setting_name: string, name: string): string {
     // We use a special label for the "Nobody" system group for clarity.
-    if (setting_name === "direct_message_permission_group" && name === "Nobody") {
+    if (setting_name === "can_resolve_topics_group" && name === "Nobody") {
+        return $t({defaultMessage: "Disable resolving topics"});
+    } else if (setting_name === "direct_message_permission_group" && name === "Nobody") {
         return $t({defaultMessage: "Direct messages disabled"});
     }
     return name;
