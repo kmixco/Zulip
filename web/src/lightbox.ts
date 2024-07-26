@@ -205,7 +205,7 @@ export function clear_for_testing(): void {
 }
 
 export function canonical_url_of_media(media: HTMLMediaElement | HTMLImageElement): string {
-    let media_string = media.src;
+    let media_string = media?.src;
     if (!media_string) {
         return "";
     }
