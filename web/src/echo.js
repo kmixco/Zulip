@@ -3,9 +3,11 @@ import $ from "jquery";
 import * as alert_words from "./alert_words";
 import {all_messages_data} from "./all_messages_data";
 import * as blueslip from "./blueslip";
+import * as browser_history from "./browser_history";
 import * as compose_notifications from "./compose_notifications";
 import * as compose_ui from "./compose_ui";
 import * as echo_state from "./echo_state";
+import * as hash_util from "./hash_util";
 import * as local_message from "./local_message";
 import * as markdown from "./markdown";
 import * as message_events_util from "./message_events_util";
@@ -343,6 +345,23 @@ export function edit_locally(message, request) {
     return message;
 }
 
+export function update_topic_hash_to_contain_with_term(message) {
+    // If the current filter consists only of channel and topic terms
+    // and the incoming message belongs to same narrow, we try to
+    // add the `with` term to the narrow, and update the hash, to
+    // convert to permalink.
+    const filter = message_lists.current.data.filter;
+    if (
+        filter.is_in_channel_topic_narrow() &&
+        filter.has_operand("channel", message.stream) &&
+        filter.has_operand("topic", message.topic)
+    ) {
+        filter.adjust_with_operand_to_message(message.id);
+        const new_hash = hash_util.search_terms_to_hash(filter.terms());
+        browser_history.set_hash(new_hash);
+    }
+}
+
 export function reify_message_id(local_id, server_id) {
     const message = echo_state.get_message_waiting_for_id(local_id);
     echo_state.remove_message_from_waiting_for_id(local_id);
@@ -374,6 +393,7 @@ export function reify_message_id(local_id, server_id) {
             message_id: message.id,
         });
     }
+    update_topic_hash_to_contain_with_term(message);
 }
 
 export function update_message_lists({old_id, new_id}) {
