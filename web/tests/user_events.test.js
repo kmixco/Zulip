@@ -26,6 +26,7 @@ mock_esm("../src/user_profile", {
     update_user_custom_profile_fields() {},
 });
 const stream_events = mock_esm("../src/stream_events");
+const user_group_edit = mock_esm("../src/user_group_edit");
 
 mock_esm("../src/activity_ui", {
     redraw() {},
@@ -35,6 +36,10 @@ mock_esm("../src/compose_state", {
 });
 mock_esm("../src/pm_list", {
     update_private_messages() {},
+});
+const settings_data = mock_esm("../src/settings_data", {
+    user_can_access_all_other_users: () => true,
+    user_can_add_custom_emoji: () => true,
 });
 mock_esm("../src/settings_linkifiers", {
     maybe_disable_widgets() {},
@@ -272,14 +277,38 @@ run_test("updates", ({override}) => {
         assert.equal(user_id, isaac.user_id);
         user_removed_from_streams = true;
     };
+    let user_removed_from_groups = false;
+    user_group_edit.remove_deactivated_user_from_all_groups = (user_id) => {
+        assert.equal(user_id, isaac.user_id);
+        user_removed_from_groups = true;
+    };
     user_events.update_person({user_id: isaac.user_id, is_active: false});
     assert.ok(!people.is_person_active(isaac.user_id));
     assert.ok(user_removed_from_streams);
+    assert.ok(user_removed_from_groups);
 
     user_events.update_person({user_id: isaac.user_id, is_active: true});
     assert.ok(people.is_person_active(isaac.user_id));
 
+    const inaccessible_user_id = 99;
+    settings_data.user_can_access_all_other_users = () => false;
+    user_group_edit.remove_deactivated_user_from_all_groups = (user_id) => {
+        assert.equal(user_id, inaccessible_user_id);
+        user_removed_from_groups = true;
+    };
+    user_removed_from_groups = false;
+    user_events.update_person({user_id: inaccessible_user_id, is_active: false});
+    assert.ok(user_removed_from_groups);
+
+    people.add_inaccessible_user(inaccessible_user_id);
+    assert.ok(people.get_by_user_id(inaccessible_user_id).is_active);
+    user_removed_from_groups = false;
+    user_events.update_person({user_id: inaccessible_user_id, is_active: false});
+    assert.ok(user_removed_from_groups);
+    assert.ok(people.get_by_user_id(inaccessible_user_id).is_active);
+
     stream_events.remove_deactivated_user_from_all_streams = noop;
+    user_group_edit.remove_deactivated_user_from_all_groups = noop;
 
     let bot_data_updated = false;
     settings_users.update_bot_data = (user_id) => {
