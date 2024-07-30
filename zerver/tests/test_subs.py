@@ -4808,7 +4808,7 @@ class SubscriptionAPITest(ZulipTestCase):
         streams_to_sub = ["multi_user_stream"]
         with (
             self.capture_send_event_calls(expected_num_events=5) as events,
-            self.assert_database_query_count(40),
+            self.assert_database_query_count(39),
         ):
             self.common_subscribe_to_streams(
                 self.test_user,
