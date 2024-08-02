@@ -25,6 +25,19 @@ releases.
 
 ## Changes in Zulip 9.0
 
+**Feature level 278**
+
+* [`POST /register`](/api/register-queue), [`GET /events`](/api/get-events),
+  [`GET /streams`](/api/get-streams),
+  [`GET /streams/{stream_id}`](/api/get-stream-by-id): Added a new
+  field `is_recently_active` to stream, which stores if a message
+  has been sent to the stream recently. This is used by the web app
+  to render streams in the left sidebar in correct order during initial
+  loading of the app. This new field will help replace the previous method
+  of using locally available messages to determine the active status of
+  streams in the left sidebar which leads to a lot of jumping around of
+  streams after initial app load.
+
 **Feature level 277**
 
 No changes; feature level used for Zulip 9.0 release.

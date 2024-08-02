@@ -2,11 +2,9 @@
 
 const {strict: assert} = require("assert");
 
-const {mock_esm, zrequire} = require("./lib/namespace");
+const {zrequire} = require("./lib/namespace");
 const {run_test} = require("./lib/test");
 const {current_user, realm, user_settings} = require("./lib/zpage_params");
-
-const stream_topic_history = mock_esm("../src/stream_topic_history");
 
 const settings_config = zrequire("settings_config");
 const pm_conversations = zrequire("pm_conversations");
@@ -146,6 +144,7 @@ test("sort_streams", ({override, override_rewire}) => {
             stream_weekly_traffic: 0,
             subscribed: true,
             is_muted: false,
+            is_recently_active: true,
         },
         {
             stream_id: 102,
@@ -154,6 +153,7 @@ test("sort_streams", ({override, override_rewire}) => {
             stream_weekly_traffic: 100,
             subscribed: true,
             is_muted: false,
+            is_recently_active: true,
         },
         {
             stream_id: 103,
@@ -162,6 +162,7 @@ test("sort_streams", ({override, override_rewire}) => {
             stream_weekly_traffic: 0,
             subscribed: true,
             is_muted: true,
+            is_recently_active: true,
         },
         {
             stream_id: 104,
@@ -170,6 +171,7 @@ test("sort_streams", ({override, override_rewire}) => {
             stream_weekly_traffic: 100,
             subscribed: true,
             is_muted: false,
+            is_recently_active: true,
         },
         {
             stream_id: 105,
@@ -178,6 +180,7 @@ test("sort_streams", ({override, override_rewire}) => {
             stream_weekly_traffic: 0,
             subscribed: true,
             is_muted: false,
+            is_recently_active: false,
         },
         {
             stream_id: 106,
@@ -186,6 +189,7 @@ test("sort_streams", ({override, override_rewire}) => {
             stream_weekly_traffic: 2,
             subscribed: true,
             is_muted: false,
+            is_recently_active: true,
         },
     ];
 
@@ -196,11 +200,6 @@ test("sort_streams", ({override, override_rewire}) => {
     );
 
     stream_list_sort.set_filter_out_inactives();
-    override(
-        stream_topic_history,
-        "stream_has_topics",
-        (stream_id) => ![105, 205].includes(stream_id),
-    );
     override_rewire(compose_state, "stream_name", () => "Dev");
 
     test_streams = th.sort_streams(test_streams, "d");
@@ -228,30 +227,35 @@ test("sort_streams", ({override, override_rewire}) => {
             name: "Dev",
             description: "development help",
             subscribed: true,
+            is_recently_active: true,
         },
         {
             stream_id: 202,
             name: "Docs",
             description: "writing docs",
             subscribed: true,
+            is_recently_active: true,
         },
         {
             stream_id: 203,
             name: "Derp",
             description: "derping around",
             subscribed: true,
+            is_recently_active: true,
         },
         {
             stream_id: 204,
             name: "Denmark",
             description: "visiting Denmark",
             subscribed: true,
+            is_recently_active: true,
         },
         {
             stream_id: 205,
             name: "dead",
             description: "dead stream",
             subscribed: true,
+            is_recently_active: false,
         },
     ];
 
