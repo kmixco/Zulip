@@ -1,6 +1,7 @@
 import assert from "minimalistic-assert";
 
 import {all_messages_data} from "./all_messages_data";
+import {get_max_msg_id_in_topics_waiting_for_ack} from "./echo_state";
 import {FoldDict} from "./fold_dict";
 import * as message_util from "./message_util";
 import * as sub_store from "./sub_store";
@@ -231,6 +232,16 @@ export class PerStreamHistory {
     get_recent_topic_names(): string[] {
         const my_recents = [...this.topics.values()];
 
+        /* Add topics whose messages are not yet acknowledged, hence
+         * not present in our stream_topic_history cache. */
+        const unacked_topics = [
+            ...get_max_msg_id_in_topics_waiting_for_ack(this.stream_id).entries(),
+        ].map(([topic, message_id]) => ({pretty_name: topic, message_id}));
+
+        const unacked_topic_names = new Set<string>(
+            unacked_topics.map((message_topic) => message_topic.pretty_name),
+        );
+
         /* Add any older topics with unreads that may not be present
          * in our local cache. */
         const missing_topics = unread.get_missing_topics({
@@ -238,9 +249,16 @@ export class PerStreamHistory {
             topic_dict: this.topics,
         });
 
-        const recents = [...my_recents, ...missing_topics];
+        /* We try to prioritize local ids of unacked messages over
+         * already acked ones in recents. Hence, we first sort the
+         * topics with no unacked messages, and then add all the
+         * topics with unacked messages before them. */
+        let recents = [...my_recents, ...missing_topics].filter(
+            (message_topic) => !unacked_topic_names.has(message_topic.pretty_name),
+        );
 
         recents.sort((a, b) => b.message_id - a.message_id);
+        recents = [...unacked_topics, ...recents];
 
         const names = recents.map((obj) => obj.pretty_name);
 
@@ -248,7 +266,11 @@ export class PerStreamHistory {
     }
 
     get_max_message_id(): number {
-        return this.max_message_id;
+        const unacked_message_ids_in_stream = [
+            ...get_max_msg_id_in_topics_waiting_for_ack(this.stream_id).values(),
+        ];
+        const max_message_id = Math.max(...unacked_message_ids_in_stream, this.max_message_id);
+        return max_message_id;
     }
 }
 
