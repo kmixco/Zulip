@@ -5,6 +5,10 @@ $settings_sidebar_width: 255px;
 
 label {
     margin: 0;
+
+    &:not([for]) {
+        cursor: default;
+    }
 }
 
 label,
@@ -1159,6 +1163,7 @@ label.preferences-radio-choice-label {
     border-bottom: 1px solid hsl(0deg 0% 0% / 20%);
     padding: 8px 0 10px;
     display: flex;
+    cursor: pointer;
 
     &:last-of-type {
         border-bottom: none;
