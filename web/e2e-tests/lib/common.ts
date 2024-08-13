@@ -36,7 +36,7 @@ export const pm_recipient = {
 
         // PM typeaheads always have an image. This ensures we are waiting for the right typeahead to appear.
         const entry = await page.waitForSelector(".typeahead .active a .typeahead-image", {
-            visible: false,
+            visible: true,
         });
         // log entry in puppeteer logs
         console.log(await entry!.evaluate((el) => el.textContent));

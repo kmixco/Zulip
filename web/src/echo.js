@@ -3,8 +3,11 @@ import $ from "jquery";
 import * as alert_words from "./alert_words";
 import {all_messages_data} from "./all_messages_data";
 import * as blueslip from "./blueslip";
+import * as browser_history from "./browser_history";
 import * as compose_notifications from "./compose_notifications";
 import * as compose_ui from "./compose_ui";
+import * as echo_state from "./echo_state";
+import * as hash_util from "./hash_util";
 import * as local_message from "./local_message";
 import * as markdown from "./markdown";
 import * as message_events_util from "./message_events_util";
@@ -24,9 +27,6 @@ import * as stream_topic_history from "./stream_topic_history";
 import * as util from "./util";
 
 // Docs: https://zulip.readthedocs.io/en/latest/subsystems/sending-messages.html
-
-const waiting_for_id = new Map();
-let waiting_for_ack = new Map();
 
 // These retry spinner functions return true if and only if the
 // spinner already is in the requested state, which can be used to
@@ -200,8 +200,8 @@ export function insert_local_message(message_request, local_id_float, insert_new
 
     [message] = insert_new_messages([message], true, true);
 
-    waiting_for_id.set(message.local_id, message);
-    waiting_for_ack.set(message.local_id, message);
+    echo_state.set_message_waiting_for_id(message.local_id, message);
+    echo_state.set_message_waiting_for_ack(message.local_id, message);
 
     return message;
 }
@@ -345,9 +345,26 @@ export function edit_locally(message, request) {
     return message;
 }
 
+export function update_topic_hash_to_contain_with_term(message) {
+    // If the current filter consists only of channel and topic terms
+    // and the incoming message belongs to same narrow, we try to
+    // add the `with` term to the narrow, and update the hash, to
+    // convert to permalink.
+    const filter = message_lists.current.data.filter;
+    if (
+        filter.is_in_channel_topic_narrow() &&
+        filter.has_operand("channel", message.stream) &&
+        filter.has_operand("topic", message.topic)
+    ) {
+        filter.adjust_with_operand_to_message(message.id);
+        const new_hash = hash_util.search_terms_to_hash(filter.terms());
+        browser_history.set_hash(new_hash);
+    }
+}
+
 export function reify_message_id(local_id, server_id) {
-    const message = waiting_for_id.get(local_id);
-    waiting_for_id.delete(local_id);
+    const message = echo_state.get_message_waiting_for_id(local_id);
+    echo_state.remove_message_from_waiting_for_id(local_id);
 
     // reify_message_id is called both on receiving a self-sent message
     // from the server, and on receiving the response to the send request
@@ -365,6 +382,18 @@ export function reify_message_id(local_id, server_id) {
     update_message_lists(opts);
     compose_notifications.reify_message_id(opts);
     recent_view_data.reify_message_id_if_available(opts);
+
+    // We add the message to stream_topic_history only after we receive
+    // it from the server i.e., is acked, so as to maintain integer
+    // message id values there.
+    if (message.type === "stream") {
+        stream_topic_history.add_message({
+            stream_id: message.stream_id,
+            topic_name: message.topic,
+            message_id: message.id,
+        });
+    }
+    update_topic_hash_to_contain_with_term(message);
 }
 
 export function update_message_lists({old_id, new_id}) {
@@ -385,7 +414,7 @@ export function process_from_server(messages) {
         // In case we get the sent message before we get the send ACK, reify here
 
         const local_id = message.local_id;
-        const client_message = waiting_for_ack.get(local_id);
+        const client_message = echo_state.get_message_waiting_for_ack(local_id);
         if (client_message === undefined) {
             // For messages that weren't locally echoed, we go through
             // the "main" codepath that doesn't have to id reconciliation.
@@ -426,7 +455,7 @@ export function process_from_server(messages) {
         client_message.submessages = message.submessages;
 
         msgs_to_rerender_or_add_to_narrow.push(client_message);
-        waiting_for_ack.delete(local_id);
+        echo_state.remove_message_from_waiting_for_ack(local_id);
     }
 
     if (msgs_to_rerender_or_add_to_narrow.length > 0) {
@@ -452,11 +481,6 @@ export function process_from_server(messages) {
     }
 
     return non_echo_messages;
-}
-
-export function _patch_waiting_for_ack(data) {
-    // Only for testing
-    waiting_for_ack = data;
 }
 
 export function message_send_error(message_id, error_response) {
@@ -496,7 +520,7 @@ export function initialize({on_send_message_success, send_message}) {
             const local_id = rows.local_echo_id($row);
             // Message should be waiting for ack and only have a local id,
             // otherwise send would not have failed
-            const message = waiting_for_ack.get(local_id);
+            const message = echo_state.get_message_waiting_for_ack(local_id);
             if (message === undefined) {
                 blueslip.warn(
                     "Got resend or retry on failure request but did not find message in ack list " +
