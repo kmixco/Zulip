@@ -1,17 +1,32 @@
 # Zulip Slack integration
 
-Get Zulip notifications from Slack for messages on your team's
-public channels!
+Get Zulip notifications from Slack for messages on your team's public channels!
+You can choose to map each **Slack channel** either to a **Zulip channel** or to
+a **Zulip topic**.
 
 See also the [Slack-compatible webhook](/integrations/doc/slack_incoming).
 
+!!! warn ""
+
+    Using [Slack's legacy Outgoing Webhook service][legacy_webhook_link] is no
+    longer recommended. Follow these instructions to switch to the new Slack
+    Event API.
+
 {start_tabs}
 
-1. {!create-channel.md!}
+1. To map Slack channels to Zulip topics, [create the
+   channel](/help/create-a-channel) you'd like to use for Slack notifications.
+   Otherwise, for each public Slack channel, [create a Zulip
+   channel](/help/create-a-channel) with the same name.
 
 1. {!create-an-incoming-webhook.md!}
 
 1. {!generate-webhook-url-basic.md!}
+   If mapping Slack channels to Zulip topics,
+   make sure that the **Send all notifications to a single topic** option is
+   disabled. Add `&channels_map_to_topics=1` to the URL you generated.
+   Otherwise, add `&channels_map_to_topics=0` to the URL you generated; the
+   Zulip channel you specified when generating the URL will be ignored.
 
 1. Create a new [Slack app][slack_app_link], and open it. Navigate to
    the **OAuth & Permissions** menu, and scroll down to the **Scopes**
@@ -21,10 +36,10 @@ See also the [Slack-compatible webhook](/integrations/doc/slack_incoming).
    `channels:history`, `users:read`, `emoji:read`, `team:read`,
    `users:read`, and `users:read.email`.
 
-    !!! warn ""
-        **Note**: If you're concerned about the scopes specified above,
-        see [Slack's Events API documentation][events_api_doc_link]
-        for more context
+    !!! tip ""
+
+        See [Slack's Events API documentation][events_api_doc_link]
+        for details about these scopes.
 
 1. Scroll to the **OAuth Tokens for Your Workspace** section in the
    same menu, and click **Install to Workspace**.
@@ -47,23 +62,7 @@ See also the [Slack-compatible webhook](/integrations/doc/slack_incoming).
 
 ![](/static/images/integrations/slack/001.png)
 
-### Configuration options
-
-*  If you'd like to map Slack channel names to message topics in Zulip,
-   add `&channels_map_to_topics=1` to the generated URL above. Note that
-   this should be used instead of specifying a topic when generating the
-   URL. If a topic is specified in the URL, then it will be prioritized
-   over the Slack channel to Zulip topic mapping.
-
-*  If you'd like to map Slack channels to Zulip channels, add
-   `&channels_map_to_topics=0` to the generated URL above. Make sure you
-   create Zulip channels for all your public Slack channels *(see step 1
-   above)*, and that the name of each Zulip channel is the same as the
-   name of the Slack channel it maps to. Note that in this case, the
-   Slack channel to Zulip channel mapping will be prioritized over any
-   Zulip channel specified when generating the URL.
-
-### Related documentation
+## Related documentation
 
 - [Slack Events API documentation][events_api_doc_link]
 
@@ -74,3 +73,5 @@ See also the [Slack-compatible webhook](/integrations/doc/slack_incoming).
 [events_api_doc_link]: https://api.slack.com/apis/events-api
 
 [slack_app_link]: https://api.slack.com/apps
+
+[legacy_webhook_link]: https://api.slack.com/legacy/custom-integrations/outgoing-webhooks

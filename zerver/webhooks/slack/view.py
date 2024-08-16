@@ -17,9 +17,10 @@ from zerver.data_import.slack_message_conversion import (
 )
 from zerver.decorator import webhook_view
 from zerver.lib.exceptions import JsonableError, UnsupportedWebhookEventTypeError
+from zerver.lib.request import RequestVariableMissingError
 from zerver.lib.response import json_success
-from zerver.lib.typed_endpoint import JsonBodyPayload, typed_endpoint
-from zerver.lib.validator import WildValue, check_none_or, check_string
+from zerver.lib.typed_endpoint import typed_endpoint
+from zerver.lib.validator import WildValue, check_none_or, check_string, to_wild_value
 from zerver.lib.webhooks.common import check_send_webhook_message
 from zerver.models import UserProfile
 
@@ -179,11 +180,42 @@ def api_slack_webhook(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    payload: JsonBodyPayload[WildValue],
-    slack_app_token: str,
+    slack_app_token: str = "",
     channels_map_to_topics: str | None = None,
 ) -> HttpResponse:
     topic_name = "Message from Slack"
+
+    if request.content_type == "application/json":
+        try:
+            val = request.body.decode(request.encoding or "utf-8")
+        except UnicodeDecodeError:  # nocoverage
+            raise JsonableError(_("Malformed payload"))
+        payload = to_wild_value("payload", val)
+
+    else:
+        # Handle Slack's legacy Outgoing Webhook Service payload.
+        expected_legacy_variable = ["user_name", "text", "channel_name"]
+        legacy_payload = {}
+        for variable in expected_legacy_variable:
+            if variable in request.POST:
+                legacy_payload[variable] = request.POST[variable]
+            elif variable in request.GET:  # nocoverage
+                legacy_payload[variable] = request.GET[variable]
+            else:
+                raise RequestVariableMissingError(variable)
+
+        text = convert_slack_formatting(legacy_payload["text"])
+        text = replace_links(text)
+        text = get_message_body(text, legacy_payload["user_name"], [])
+        handle_send_webhook_message(
+            request,
+            user_profile,
+            topic_name,
+            text,
+            legacy_payload["channel_name"],
+            channels_map_to_topics,
+        )
+        return json_success(request)
 
     # Handle initial URL verification handshake for Slack Events API.
     if is_challenge_handshake(payload):
