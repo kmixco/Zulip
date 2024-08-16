@@ -1343,6 +1343,10 @@ div.overlay {
             color: var(--color-copy-btn-square-active);
         }
     }
+
+    &.copy-btn-success {
+        color: var(--color-copy-btn-success);
+    }
 }
 
 .text-success {
