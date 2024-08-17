@@ -259,8 +259,11 @@ DEFAULT_RATE_LIMITING_RULES = {
     ],
     # Limits total number of unauthenticated API requests (primarily
     # used by the public access option). Since these are
-    # unauthenticated requests, each IP address is a separate bucket.
+    # unauthenticated requests, each IPv4 address is a separate bucket.
+    # For IPv6, one bucket is used for each IPv6/64.
     "api_by_ip": [
+        # can be IPv4, tor-exit-node or IPv6/64.
+        # 100 requests per minute.
         (60, 100),
     ],
     # Limits total requests to the Mobile Push Notifications Service
@@ -308,6 +311,7 @@ DEFAULT_RATE_LIMITING_RULES = {
     # sending of an email, restricting the number per IP address. This
     # is a general anti-spam measure.
     "sends_email_by_ip": [
+        # 5 emails per day.
         (86400, 5),
     ],
     # Limits access to uploaded files, in web-public contexts, done by
