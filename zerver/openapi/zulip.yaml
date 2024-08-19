@@ -1866,6 +1866,7 @@ paths:
                                         "field_data": "",
                                         "order": 1,
                                         "required": true,
+                                        "editable_by_user": true,
                                       },
                                       {
                                         "id": 2,
@@ -1875,6 +1876,7 @@ paths:
                                         "field_data": "",
                                         "order": 2,
                                         "required": true,
+                                        "editable_by_user": true,
                                       },
                                       {
                                         "id": 3,
@@ -1884,6 +1886,7 @@ paths:
                                         "field_data": "",
                                         "order": 3,
                                         "required": false,
+                                        "editable_by_user": true,
                                       },
                                       {
                                         "id": 4,
@@ -1894,6 +1897,7 @@ paths:
                                         "order": 4,
                                         "display_in_profile_summary": true,
                                         "required": true,
+                                        "editable_by_user": true,
                                       },
                                       {
                                         "id": 5,
@@ -1903,6 +1907,7 @@ paths:
                                         "field_data": "",
                                         "order": 5,
                                         "required": false,
+                                        "editable_by_user": false,
                                       },
                                       {
                                         "id": 6,
@@ -1913,6 +1918,7 @@ paths:
                                         "order": 6,
                                         "display_in_profile_summary": true,
                                         "required": false,
+                                        "editable_by_user": true,
                                       },
                                       {
                                         "id": 7,
@@ -1922,6 +1928,7 @@ paths:
                                         "field_data": "",
                                         "order": 7,
                                         "required": true,
+                                        "editable_by_user": false,
                                       },
                                       {
                                         "id": 8,
@@ -1931,6 +1938,7 @@ paths:
                                         "field_data": '{"subtype":"github"}',
                                         "order": 8,
                                         "required": true,
+                                        "editable_by_user": true,
                                       },
                                     ],
                                   "id": 0,
@@ -10917,6 +10925,7 @@ paths:
                               "field_data": "",
                               "order": 1,
                               "required": true,
+                              "editable_by_user": false,
                             },
                             {
                               "id": 2,
@@ -10926,6 +10935,7 @@ paths:
                               "field_data": "",
                               "order": 2,
                               "required": true,
+                              "editable_by_user": true,
                             },
                             {
                               "id": 3,
@@ -10935,6 +10945,7 @@ paths:
                               "field_data": "",
                               "order": 3,
                               "required": false,
+                              "editable_by_user": true,
                             },
                             {
                               "id": 4,
@@ -10945,6 +10956,7 @@ paths:
                               "order": 4,
                               "display_in_profile_summary": true,
                               "required": true,
+                              "editable_by_user": true,
                             },
                             {
                               "id": 5,
@@ -10954,6 +10966,7 @@ paths:
                               "field_data": "",
                               "order": 5,
                               "required": false,
+                              "editable_by_user": false,
                             },
                             {
                               "id": 6,
@@ -10964,6 +10977,7 @@ paths:
                               "order": 6,
                               "display_in_profile_summary": true,
                               "required": false,
+                              "editable_by_user": true,
                             },
                             {
                               "id": 7,
@@ -10973,6 +10987,7 @@ paths:
                               "field_data": "",
                               "order": 7,
                               "required": true,
+                              "editable_by_user": false,
                             },
                             {
                               "id": 8,
@@ -10982,6 +10997,7 @@ paths:
                               "field_data": '{"subtype":"github"}',
                               "order": 8,
                               "required": true,
+                              "editable_by_user": true,
                             },
                             {
                               "id": 9,
@@ -10990,6 +11006,7 @@ paths:
                               "hint": "What pronouns should people use to refer to you?",
                               "order": 9,
                               "required": false,
+                              "editable_by_user": true,
                             },
                           ],
                       }
@@ -11119,6 +11136,16 @@ paths:
                     **Changes**: New in Zulip 9.0 (feature level 244).
                   type: boolean
                   example: true
+                editable_by_user:
+                  description: |
+                    Whether regular users can edit this profile field on their own account.
+
+                    Note that organization administrators can edit custom profile fields for any user
+                    regardless of this setting.
+
+                    **Changes**: New in Zulip 10.0 (feature level 283).
+                  type: boolean
+                  example: true
               required:
                 - field_type
             encoding:
@@ -11129,6 +11156,8 @@ paths:
               display_in_profile_summary:
                 contentType: application/json
               required:
+                contentType: application/json
+              editable_by_user:
                 contentType: application/json
       responses:
         "200":
@@ -20811,6 +20840,16 @@ components:
             banner to any user who has not set a value for a required field.
 
             **Changes**: New in Zulip 9.0 (feature level 244).
+        editable_by_user:
+          type: boolean
+          description: |
+            Whether regular users can edit this profile field on their own account.
+
+            Note that organization administrators can edit custom profile fields for any user
+            regardless of this setting.
+
+            **Changes**: New in Zulip 10.0 (feature level 283).
+          default: true
       required:
         - id
         - type
@@ -20818,6 +20857,7 @@ components:
         - name
         - hint
         - required
+        - editable_by_user
     OnboardingStep:
       type: object
       additionalProperties: false
