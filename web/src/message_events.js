@@ -10,6 +10,7 @@ import * as compose_state from "./compose_state";
 import * as compose_validate from "./compose_validate";
 import * as direct_message_group_data from "./direct_message_group_data";
 import * as drafts from "./drafts";
+import {patch_local_message} from "./echo";
 import * as message_edit from "./message_edit";
 import * as message_edit_history from "./message_edit_history";
 import * as message_events_util from "./message_events_util";
@@ -99,6 +100,13 @@ export function insert_new_messages(messages, sent_by_this_client, deliver_local
 
     if (any_untracked_unread_messages) {
         unread_ui.update_unread_counts();
+    }
+
+    // If it is a local echo, we try to patch the messages to the
+    // data structures in `echo_state` before we update the stream
+    // sidebar.
+    if (deliver_locally) {
+        messages.map((message) => patch_local_message(message));
     }
 
     unread_ops.process_visible();

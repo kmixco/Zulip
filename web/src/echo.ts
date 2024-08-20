@@ -234,6 +234,14 @@ export function build_display_recipient(message: LocalMessage): DisplayRecipient
     return display_recipient;
 }
 
+export function patch_local_message(message: Message): void {
+    if (message?.local_id === undefined) {
+        return;
+    }
+    echo_state.set_message_waiting_for_id(message.local_id, message);
+    echo_state.set_message_waiting_for_ack(message.local_id, message);
+}
+
 export function insert_local_message(
     message_request: MessageRequest,
     local_id_float: number,
@@ -270,9 +278,6 @@ export function insert_local_message(
 
     const [message] = insert_new_messages([local_message], true, true);
     assert(message !== undefined);
-    assert(message.local_id !== undefined);
-    echo_state.set_message_waiting_for_id(message.local_id, message);
-    echo_state.set_message_waiting_for_ack(message.local_id, message);
 
     return message;
 }
