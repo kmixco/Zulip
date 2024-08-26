@@ -186,7 +186,7 @@ export function can_edit_user_group(group_id: number): boolean {
     }
 
     const group = user_groups.get_user_group_from_id(group_id);
-    return user_groups.is_user_in_group(group.can_manage_group, current_user.user_id);
+    return user_groups.is_user_in_setting_group(group.can_manage_group, current_user.user_id);
 }
 
 export function user_can_create_user_groups(): boolean {
