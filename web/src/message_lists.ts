@@ -5,12 +5,31 @@ import type {MessageListData} from "./message_list_data";
 import type {Message} from "./message_store";
 import * as ui_util from "./ui_util";
 
-// TODO(typescript): Move this to message_list_view when it's
-// converted to TypeScript.
+// TODO/TypeScript: Move this to message_list_view.js when it's migrated to TypeScript.
 export type MessageContainer = {
-    msg: Message;
+    background_color: string;
+    date_divider_html?: string;
+    edited_alongside_sender: boolean;
+    edited_in_left_col: boolean;
+    edited_status_msg: boolean;
+    include_recipient: boolean;
+    include_sender: boolean;
     is_hidden: boolean;
+    mention_classname: string | null;
+    message_edit_notices_in_left_col: boolean;
+    msg: Message;
+    sender_is_bot: boolean;
+    sender_is_guest: boolean;
+    should_add_guest_indicator_for_sender: boolean;
+    small_avatar_url: string;
+    status_message: boolean;
+    stream_url?: string;
+    subscribed?: boolean;
+    timestr: string;
+    topic_url?: string;
+    unsubscribed?: boolean;
     url: string;
+    want_date_divider: boolean;
 };
 
 // TODO(typescript): Move this to message_list_view when it's

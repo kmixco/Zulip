@@ -5,39 +5,13 @@ import assert from "minimalistic-assert";
 import * as compose_fade_helper from "./compose_fade_helper";
 import * as compose_state from "./compose_state";
 import * as message_lists from "./message_lists";
-import type {Message} from "./message_store";
+import type {MessageContainer} from "./message_lists";
 import * as message_viewport from "./message_viewport";
 import * as people from "./people";
 import * as rows from "./rows";
 import type {TopicLink} from "./types";
 import type {AllVisibilityPolicies} from "./user_topics";
 import * as util from "./util";
-
-// TODO/TypeScript: Move this to message_list_view.js when it's migrated to TypeScript.
-type MessageContainer = {
-    background_color: string;
-    date_divider_html?: string;
-    edited_alongside_sender: boolean;
-    edited_in_left_col: boolean;
-    edited_status_msg: boolean;
-    include_recipient: boolean;
-    include_sender: boolean;
-    is_hidden: boolean;
-    mention_classname: string | null;
-    message_edit_notices_in_left_col: boolean;
-    msg: Message;
-    sender_is_bot: boolean;
-    sender_is_guest: boolean;
-    should_add_guest_indicator_for_sender: boolean;
-    small_avatar_url: string;
-    status_message: boolean;
-    stream_url?: string;
-    subscribed?: boolean;
-    timestr: string;
-    topic_url?: string;
-    unsubscribed?: boolean;
-    want_date_divider: boolean;
-};
 
 // TODO/TypeScript: Move this to message_list_view.js when it's migrated to TypeScript.
 type MessageGroup = {
