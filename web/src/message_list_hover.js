@@ -42,7 +42,7 @@ export function message_hover($message_row) {
 
     const can_move_message = message_edit.can_move_message(message);
     const args = {
-        is_content_editable: is_content_editable && !message.status_message,
+        is_content_editable: is_content_editable && !message.is_me_message,
         can_move_message,
     };
     const $edit_content = $message_row.find(".edit_content");
