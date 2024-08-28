@@ -329,7 +329,13 @@
 
     /* Shared sidebar typography and effects values. */
     --font-weight-sidebar-heading: 600;
+    --font-weight-sidebar-action-heading: 325;
+    --font-variant-sidebar-action-heading: all-small-caps;
+    /* 19px at 15px/1em */
+    --font-size-sidebar-action-heading: 1.2667em;
+    --text-transform-sidebar-action-heading: uppercase;
     --letter-spacing-sidebar-heading: 0.0469em;
+    --letter-spacing-sidebar-action-heading: 0.0281em;
 
     /*
     Message box elements and values.
