@@ -108,6 +108,14 @@ export function get_realm_user_groups(): UserGroup[] {
     return user_groups.filter((group) => !group.is_system_group);
 }
 
+// This is only used for testing currently, but would be used in
+// future when we use system groups more and probably show them
+// in the UI as well.
+export function get_all_realm_user_groups(): UserGroup[] {
+    const user_groups = [...user_group_by_id_dict.values()].sort((a, b) => a.id - b.id);
+    return user_groups;
+}
+
 export function get_user_groups_allowed_to_mention(): UserGroup[] {
     const user_groups = get_realm_user_groups();
     return user_groups.filter((group) => {
