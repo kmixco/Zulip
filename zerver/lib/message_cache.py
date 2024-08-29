@@ -246,6 +246,15 @@ class MessageDict:
         else:
             obj["content_type"] = "text/x-markdown"
 
+        for item in obj.get("edit_history", []):
+            if "prev_rendered_content_version" in item:
+                del item["prev_rendered_content_version"]
+            if "prev_rendered_content" in item:
+                if apply_markdown:
+                    item["prev_content"] = item["prev_rendered_content"]
+                if not keep_rendered_content:
+                    del item["prev_rendered_content"]
+
         if not keep_rendered_content:
             del obj["rendered_content"]
         del obj["sender_realm_id"]
