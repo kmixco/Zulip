@@ -1133,6 +1133,50 @@ def remove_attachment(client: Client, attachment_id: int) -> None:
     validate_against_openapi_schema(result, "/attachments/{attachment_id}", "delete", "200")
 
 
+@openapi_test_function("/saved_replies:post")
+def create_saved_reply(client: Client) -> None:
+    # {code_example|start}
+    # Create a saved reply.
+    request = {"title": "Welcome message", "content": "**Welcome** to the organization."}
+    result = client.call_endpoint(
+        request=request,
+        url="/saved_replies",
+        method="POST",
+    )
+    # {code_example|end}
+    assert_success_response(result)
+    validate_against_openapi_schema(result, "/saved_replies", "post", "200")
+
+
+@openapi_test_function("/saved_replies:get")
+def get_saved_replies(client: Client) -> None:
+    # {code_example|start}
+    # Get all the saved replies.
+    result = client.call_endpoint(
+        url="/saved_replies",
+        method="GET",
+    )
+    # {code_example|end}
+    assert_success_response(result)
+    validate_against_openapi_schema(result, "/saved_replies", "get", "200")
+
+
+@openapi_test_function("/saved_replies/{saved_reply_id}:delete")
+def delete_saved_reply(client: Client) -> None:
+    saved_reply_id = client.call_endpoint(url="/saved_replies", method="GET")["saved_replies"][0][
+        "id"
+    ]
+    # {code_example|start}
+    # Delete a saved reply.
+    result = client.call_endpoint(
+        url=f"/saved_replies/{saved_reply_id}",
+        method="DELETE",
+    )
+    # {code_example|end}
+    assert_success_response(result)
+    validate_against_openapi_schema(result, "/saved_replies/{saved_reply_id}", "delete", "200")
+
+
 @openapi_test_function("/messages:post")
 def send_message(client: Client) -> int:
     request: dict[str, Any] = {}
@@ -1770,6 +1814,9 @@ def test_users(client: Client, owner_client: Client) -> None:
     remove_user_mute(client)
     get_alert_words(client)
     add_alert_words(client)
+    create_saved_reply(client)
+    get_saved_replies(client)
+    delete_saved_reply(client)
     remove_alert_words(client)
     add_apns_token(client)
     remove_apns_token(client)

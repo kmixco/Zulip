@@ -160,6 +160,7 @@ ALL_ZULIP_TABLES = {
     "zerver_realmreactivationstatus",
     "zerver_realmuserdefault",
     "zerver_recipient",
+    "zerver_savedreply",
     "zerver_scheduledemail",
     "zerver_scheduledemail_users",
     "zerver_scheduledmessage",

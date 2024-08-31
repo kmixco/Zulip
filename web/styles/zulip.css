@@ -2003,12 +2003,23 @@ body:not(.hide-left-sidebar) {
         margin-top: 2px;
     }
 
+    .dropdown-list-delete {
+        visibility: hidden;
+        float: right;
+        cursor: pointer;
+        color: hsl(357deg 64% 72%);
+    }
+
     &:focus,
     &:hover {
         color: var(--color-dropdown-item);
         text-decoration: none;
         background-color: var(--background-color-active-dropdown-item);
         outline: none;
+
+        .dropdown-list-delete {
+            visibility: visible;
+        }
     }
 }
 

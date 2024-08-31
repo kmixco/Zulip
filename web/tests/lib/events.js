@@ -594,6 +594,23 @@ exports.fixtures = {
         server_generation: 1707511515,
     },
 
+    saved_replies__add: {
+        type: "saved_replies",
+        op: "add",
+        saved_reply: {
+            id: 1,
+            title: "Example",
+            content: "Welcome to the organization.",
+            date_created: 1681662420,
+        },
+    },
+
+    saved_replies__remove: {
+        type: "saved_replies",
+        op: "remove",
+        saved_reply_id: 1,
+    },
+
     scheduled_messages__add: {
         type: "scheduled_messages",
         op: "add",

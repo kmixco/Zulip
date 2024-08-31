@@ -95,6 +95,7 @@ import * as realm_user_settings_defaults from "./realm_user_settings_defaults";
 import * as recent_view_ui from "./recent_view_ui";
 import * as reload_setup from "./reload_setup";
 import * as resize_handler from "./resize_handler";
+import * as saved_replies_ui from "./saved_replies_ui";
 import * as scheduled_messages from "./scheduled_messages";
 import * as scheduled_messages_overlay_ui from "./scheduled_messages_overlay_ui";
 import * as scheduled_messages_ui from "./scheduled_messages_ui";
@@ -613,6 +614,7 @@ export function initialize_everything(state_data) {
             message_view.narrow_by_topic(message_id, {trigger: "compose_notification"});
         },
     });
+    saved_replies_ui.initialize(state_data.saved_replies);
     unread_ops.initialize();
     gear_menu.initialize();
     navbar_help_menu.initialize();

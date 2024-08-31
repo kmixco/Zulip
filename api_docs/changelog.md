@@ -20,6 +20,18 @@ format used by the Zulip server that they are interacting with.
 
 ## Changes in Zulip 10.0
 
+**Feature level 285**
+
+* [`GET /events`](/api/get-events), [`POST /register`](/api/register-queue):
+  An event with `type: "saved_replies"` is sent to the current user when a
+  saved reply is created or deleted.
+* [`GET /saved_replies`](/api/get-saved-replies): Added a new endpoint for
+  fetching saved replies of the user.
+* [`POST /saved_replies`](/api/create-saved-reply): Added a new endpoint for
+  creating new saved replies.
+* [`DELETE /saved_replies/{saved_reply_id}`](/api/delete-saved-reply): Added
+  a new endpoint for deleting saved replies.
+
 **Feature level 284**
 
 * [`GET /events`](/api/get-events), [`GET /messages`](/api/get-messages),

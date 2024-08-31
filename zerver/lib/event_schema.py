@@ -300,6 +300,32 @@ drafts_remove_event = event_dict_type(
 )
 check_draft_remove = make_checker(drafts_remove_event)
 
+saved_reply_fields = DictType(
+    required_keys=[
+        ("id", int),
+        ("title", str),
+        ("content", str),
+        ("date_created", int),
+    ],
+)
+
+saved_reply_add_event = event_dict_type(
+    required_keys=[
+        ("type", Equals("saved_replies")),
+        ("op", Equals("add")),
+        ("saved_reply", saved_reply_fields),
+    ]
+)
+check_saved_reply_add = make_checker(saved_reply_add_event)
+
+saved_reply_remove_event = event_dict_type(
+    required_keys=[
+        ("type", Equals("saved_replies")),
+        ("op", Equals("remove")),
+        ("saved_reply_id", int),
+    ]
+)
+check_saved_reply_remove = make_checker(saved_reply_remove_event)
 
 has_zoom_token_event = event_dict_type(
     required_keys=[
