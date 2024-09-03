@@ -289,7 +289,7 @@ function open_custom_profile_field_form_modal(): void {
 }
 
 function add_choice_row(this: HTMLElement, e: JQuery.TriggeredEvent): void {
-    const $curr_choice_row = $(this).parent();
+    const $curr_choice_row = $(this).parents().eq(1);
     if ($curr_choice_row.next().hasClass("choice-row")) {
         return;
     }
@@ -418,6 +418,7 @@ function set_up_select_field_edit_form(
                 render_settings_profile_field_choice({
                     text: choice.text,
                     value: choice.value,
+                    edit_disabled: true,
                 }),
             ),
         );
