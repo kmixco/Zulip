@@ -266,7 +266,7 @@ function render(next_state) {
     }
 }
 
-function dispatch(action, payload) {
+function dispatch({action, payload}) {
     switch (action) {
         case "CHANGE_CATEGORY":
             render({...state, category: payload.category});
@@ -325,13 +325,19 @@ function integration_events() {
     $(".integration-instruction-block").on("click", "a .integration-category", (e) => {
         e.preventDefault();
         const category = $(e.target).data("category");
-        dispatch("SHOW_CATEGORY", {category});
+        dispatch({
+            action: "SHOW_CATEGORY",
+            payload: {category},
+        });
     });
 
     $(".integrations a .integration-category").on("click", (e) => {
         e.preventDefault();
         const category = $(e.target).data("category");
-        dispatch("CHANGE_CATEGORY", {category});
+        dispatch({
+            action: "CHANGE_CATEGORY",
+            payload: {category},
+        });
         toggle_categories_dropdown();
     });
 
@@ -339,19 +345,22 @@ function integration_events() {
         if (!$(e.target).closest(".integration-lozenge").hasClass("integration-create-your-own")) {
             e.preventDefault();
             const integration = $(e.target).closest(".integration-lozenge").data("name");
-            dispatch("SHOW_INTEGRATION", {integration});
+            dispatch({
+                action: "SHOW_INTEGRATION",
+                payload: {integration},
+            });
         }
     });
 
     $("a#integration-list-link span, a#integration-list-link i").on("click", (e) => {
         e.preventDefault();
-        dispatch("HIDE_INTEGRATION");
+        dispatch({action: "HIDE_INTEGRATION"});
     });
 
     // combine selector use for both focusing the integrations searchbar and adding
     // the input event.
     $(".integrations .searchbar input[type='text']").on("input", (e) => {
-        dispatch("UPDATE_QUERY", {query: e.target.value.toLowerCase()});
+        dispatch({action: "UPDATE_QUERY", payload: {query: e.target.value.toLowerCase()}});
     });
 
     $(window).on("scroll", () => {
@@ -368,7 +377,7 @@ function integration_events() {
 
     $(window).on("popstate", () => {
         if (window.location.pathname.startsWith("/integrations/")) {
-            dispatch("LOAD_PATH");
+            dispatch({action: "LOAD_PATH"});
         } else {
             window.location = window.location.href;
         }
@@ -379,7 +388,7 @@ function integration_events() {
 $(() => {
     integration_events();
     load_data();
-    dispatch("LOAD_PATH");
+    dispatch({action: "LOAD_PATH"});
     $(".integrations .searchbar input[type='text']").trigger("focus");
     adjust_font_sizing();
 });
