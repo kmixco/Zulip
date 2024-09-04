@@ -400,7 +400,6 @@ export function paste_handler_converter(paste_html: string): string {
     assert(copied_html_fragment !== null);
     const copied_within_single_element = within_single_element(copied_html_fragment);
     const outer_elements_to_retain = ["PRE", "UL", "OL", "A", "CODE"];
-
     // If the entire selection copied is within a single HTML element (like an
     // `h1`), we don't want to retain its styling, except when it is needed to
     // identify the intended structure of the copied content.
@@ -609,7 +608,6 @@ export function paste_handler_converter(paste_html: string): string {
     markdown_text = markdown_text.replaceAll(/\n+([*+-])/g, "\n$1");
     return markdown_text;
 }
-
 
 function is_safe_url_paste_target($textarea: JQuery<HTMLTextAreaElement>): boolean {
     const range = $textarea.range();
