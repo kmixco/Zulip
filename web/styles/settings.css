@@ -1626,6 +1626,7 @@ $option_title_width: 180px;
 
 .settings-field-label {
     margin-bottom: var(--margin-bottom-field-description);
+    width: fit-content;
 }
 
 .settings-profile-user-field-hint {
