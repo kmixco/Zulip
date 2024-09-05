@@ -119,7 +119,7 @@ from zproject.backends import (
 )
 
 if settings.BILLING_ENABLED:
-    from corporate.lib.registration import check_spare_licenses_available_for_registering_new_user
+    from corporate.lib.registration import check_licenses_available_for_registering_new_user
     from corporate.lib.stripe import LicenseLimitError
 
 
@@ -331,7 +331,7 @@ def registration_helper(
 
         if settings.BILLING_ENABLED:
             try:
-                check_spare_licenses_available_for_registering_new_user(realm, email, role=role)
+                check_licenses_available_for_registering_new_user(realm, email, role=role)
             except LicenseLimitError:
                 return TemplateResponse(request, "zerver/no_spare_licenses.html")
 

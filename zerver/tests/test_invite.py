@@ -535,11 +535,14 @@ class InviteUserTest(InviteUserBase):
             result = self.invite(self.nonreg_email("alice"), ["Denmark"])
         self.assert_json_success(result)
 
-        ledger.licenses_at_next_renewal = 5
+        ledger.licenses_at_next_renewal = get_latest_seat_count(user.realm)
         ledger.save(update_fields=["licenses_at_next_renewal"])
         with self.settings(BILLING_ENABLED=True):
             result = self.invite(self.nonreg_email("bob"), ["Denmark"])
-        self.assert_json_success(result)
+        self.assert_json_error_contains(
+            result,
+            "Your organization does not have enough licenses to invite users.",
+        )
 
         ledger.licenses = get_latest_seat_count(user.realm) + 1
         ledger.save(update_fields=["licenses"])
