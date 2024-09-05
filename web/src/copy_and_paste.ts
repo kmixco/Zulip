@@ -423,11 +423,17 @@ export function paste_handler_converter(paste_html: string): string {
 
     // Rule to handle headings and remove the `#` symbol
     turndownService.addRule("heading", {
-        filter: (node) => node.nodeName === "H1" || node.nodeName === "H2" || node.nodeName === "H3" || node.nodeName === "H4" || node.nodeName === "H5" || node.nodeName === "H6",
-        replacement(content, node) {
+        filter: (node) =>
+            node.nodeName === "H1" ||
+            node.nodeName === "H2" ||
+            node.nodeName === "H3" ||
+            node.nodeName === "H4" ||
+            node.nodeName === "H5" ||
+            node.nodeName === "H6",
+        replacement(content) {
             // Remove heading formatting by not including the `#`
             return content;
-        }
+        },
     });
 
     turndownService.addRule("style", {
