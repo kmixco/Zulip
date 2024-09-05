@@ -27,7 +27,8 @@ type PopoverName =
     | "change_visibility_policy"
     | "personal_menu"
     | "gear_menu"
-    | "help_menu";
+    | "help_menu"
+    | "stream_info_popover";
 
 export const popover_instances: Record<PopoverName, tippy.Instance | null> = {
     compose_control_buttons: null,
@@ -45,6 +46,7 @@ export const popover_instances: Record<PopoverName, tippy.Instance | null> = {
     personal_menu: null,
     gear_menu: null,
     help_menu: null,
+    stream_info_popover: null,
 };
 
 /* Keyboard UI functions */
