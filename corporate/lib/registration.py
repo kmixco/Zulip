@@ -2,7 +2,7 @@ from django.conf import settings
 from django.utils.translation import gettext as _
 
 from corporate.lib.stripe import LicenseLimitError, get_latest_seat_count, get_seat_count
-from corporate.models import get_current_plan_by_realm
+from corporate.models import CustomerPlan, get_current_plan_by_realm
 from zerver.actions.create_user import send_group_direct_message_to_admins
 from zerver.lib.exceptions import InvitationError
 from zerver.models import Realm, UserProfile
@@ -50,17 +50,28 @@ def generate_licenses_low_warning_message_if_required(realm: Realm) -> str | Non
 
 
 def send_user_unable_to_signup_group_direct_message_to_admins(
-    realm: Realm, user_email: str
+    realm: Realm, user_email: str, all_licenses_in_use: bool = True
 ) -> None:
-    message = _(
-        "A new member ({email}) was unable to join your organization because all Zulip licenses "
-        "are in use. Please [increase the number of licenses]({billing_page_link}) or "
-        "[deactivate inactive users]({deactivate_user_help_page_link}) to allow new members to join."
-    ).format(
-        email=user_email,
-        billing_page_link="/billing/#settings",
-        deactivate_user_help_page_link="/help/deactivate-or-reactivate-a-user",
-    )
+    if all_licenses_in_use:
+        message = _(
+            "A new member ({email}) was unable to join your organization because all Zulip licenses "
+            "are in use. Please [increase the number of licenses]({billing_page_link}) or "
+            "[deactivate inactive users]({deactivate_user_help_page_link}) to allow new members to join."
+        ).format(
+            email=user_email,
+            billing_page_link="/billing/",
+            deactivate_user_help_page_link="/help/deactivate-or-reactivate-a-user",
+        )
+    else:
+        message = _(
+            "A new member ({email}) was unable to join your organization because the number of Zulip "
+            "licenses in use would exceed the number of licenses set for the next billing period. Please "
+            "[increase the number of licenses for the next billing period]({billing_page_link}) to allow "
+            "new members to join."
+        ).format(
+            email=user_email,
+            billing_page_link="/billing/",
+        )
 
     send_group_direct_message_to_admins(
         get_system_bot(settings.NOTIFICATION_BOT, realm.id), realm, message
@@ -68,40 +79,67 @@ def send_user_unable_to_signup_group_direct_message_to_admins(
 
 
 def check_spare_licenses_available_for_adding_new_users(
-    realm: Realm, extra_non_guests_count: int = 0, extra_guests_count: int = 0
+    realm: Realm, plan: CustomerPlan, extra_non_guests_count: int = 0, extra_guests_count: int = 0
 ) -> None:
-    plan = get_current_plan_by_realm(realm)
-    if plan is None or plan.automanage_licenses or plan.customer.exempt_from_license_number_check:
-        return
-
     if plan.licenses() < get_seat_count(
         realm, extra_non_guests_count=extra_non_guests_count, extra_guests_count=extra_guests_count
     ):
         raise LicenseLimitError
 
 
-def check_spare_licenses_available_for_registering_new_user(
+def check_renewal_licenses_sufficient_for_adding_new_users(
+    realm: Realm, plan: CustomerPlan, extra_non_guests_count: int = 0
+) -> None:
+    renewal_licenses = plan.licenses_at_next_renewal()
+    if renewal_licenses and renewal_licenses < get_seat_count(
+        realm, extra_non_guests_count=extra_non_guests_count
+    ):
+        raise LicenseLimitError
+
+
+def check_licenses_available_for_registering_new_user(
     realm: Realm,
     user_email_to_add: str,
     role: int,
 ) -> None:
+    plan = get_current_plan_by_realm(realm)
+    if plan is None or plan.automanage_licenses or plan.customer.exempt_from_license_number_check:
+        return
+
     try:
         if role == UserProfile.ROLE_GUEST:
-            check_spare_licenses_available_for_adding_new_users(realm, extra_guests_count=1)
+            check_spare_licenses_available_for_adding_new_users(realm, plan, extra_guests_count=1)
         else:
-            check_spare_licenses_available_for_adding_new_users(realm, extra_non_guests_count=1)
+            check_spare_licenses_available_for_adding_new_users(
+                realm, plan, extra_non_guests_count=1
+            )
     except LicenseLimitError:
         send_user_unable_to_signup_group_direct_message_to_admins(realm, user_email_to_add)
         raise
 
+    if role != UserProfile.ROLE_GUEST:
+        try:
+            check_renewal_licenses_sufficient_for_adding_new_users(
+                realm, plan, extra_non_guests_count=1
+            )
+        except LicenseLimitError:
+            send_user_unable_to_signup_group_direct_message_to_admins(
+                realm, user_email_to_add, all_licenses_in_use=False
+            )
+            raise
 
-def check_spare_licenses_available_for_inviting_new_users(
+
+def check_licenses_available_for_inviting_new_users(
     realm: Realm, extra_non_guests_count: int = 0, extra_guests_count: int = 0
 ) -> None:
     num_invites = extra_non_guests_count + extra_guests_count
+    plan = get_current_plan_by_realm(realm)
+    if plan is None or plan.automanage_licenses or plan.customer.exempt_from_license_number_check:
+        return
+
     try:
         check_spare_licenses_available_for_adding_new_users(
-            realm, extra_non_guests_count, extra_guests_count
+            realm, plan, extra_non_guests_count, extra_guests_count
         )
     except LicenseLimitError:
         if num_invites == 1:
@@ -111,3 +149,12 @@ def check_spare_licenses_available_for_inviting_new_users(
                 "Your organization does not have enough unused Zulip licenses to invite {num_invites} users."
             ).format(num_invites=num_invites)
         raise InvitationError(message, [], sent_invitations=False, license_limit_reached=True)
+
+    if extra_non_guests_count > 0:
+        try:
+            check_renewal_licenses_sufficient_for_adding_new_users(
+                realm, plan, extra_non_guests_count
+            )
+        except LicenseLimitError:
+            message = _("Your organization does not have enough licenses to invite users.")
+            raise InvitationError(message, [], sent_invitations=False)

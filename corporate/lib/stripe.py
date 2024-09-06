@@ -2134,6 +2134,21 @@ class BillingSession(ABC):
 
         return next_billing_cycle
 
+    def validate_plan_license_management(
+        self, plan: CustomerPlan, renewal_license_count: int
+    ) -> None:
+        if plan.automanage_licenses or plan.customer.exempt_from_license_number_check:
+            return
+
+        # TODO: Enforce manual license management for all paid plans.
+        if plan.tier not in [CustomerPlan.TIER_CLOUD_STANDARD, CustomerPlan.TIER_CLOUD_PLUS]:
+            return  # nocoverage
+
+        if self.current_count_for_billed_licenses() > renewal_license_count:
+            raise BillingError(
+                f"Customer has not manually updated plan for current license count: {plan.customer!s}"
+            )
+
     # event_time should roughly be timezone_now(). Not designed to handle
     # event_times in the past or future
     @transaction.atomic
@@ -2157,6 +2172,7 @@ class BillingSession(ABC):
                 return None, None
 
             if plan.status == CustomerPlan.ACTIVE:
+                self.validate_plan_license_management(plan, licenses_at_next_renewal)
                 return None, LicenseLedger.objects.create(
                     plan=plan,
                     is_renewal=True,
@@ -2193,6 +2209,7 @@ class BillingSession(ABC):
                 )
 
             if plan.status == CustomerPlan.SWITCH_PLAN_TIER_AT_PLAN_END:  # nocoverage
+                self.validate_plan_license_management(plan, licenses_at_next_renewal)
                 plan.status = CustomerPlan.ENDED
                 plan.save(update_fields=["status"])
 
@@ -2214,6 +2231,7 @@ class BillingSession(ABC):
                 )
 
             if plan.status == CustomerPlan.SWITCH_TO_ANNUAL_AT_END_OF_CYCLE:
+                self.validate_plan_license_management(plan, licenses_at_next_renewal)
                 if plan.fixed_price is not None:  # nocoverage
                     raise NotImplementedError("Can't switch fixed priced monthly plan to annual.")
 
@@ -2259,6 +2277,7 @@ class BillingSession(ABC):
                 return new_plan, new_plan_ledger_entry
 
             if plan.status == CustomerPlan.SWITCH_TO_MONTHLY_AT_END_OF_CYCLE:
+                self.validate_plan_license_management(plan, licenses_at_next_renewal)
                 if plan.fixed_price is not None:  # nocoverage
                     raise BillingError("Customer is already on monthly fixed plan.")
 
@@ -2474,6 +2493,7 @@ class BillingSession(ABC):
             "licenses": licenses,
             "licenses_at_next_renewal": licenses_at_next_renewal,
             "seat_count": seat_count,
+            "exempt_from_license_number_check": customer.exempt_from_license_number_check,
             "renewal_date": renewal_date,
             "renewal_amount": cents_to_dollar_string(renewal_cents) if renewal_cents != 0 else None,
             "payment_method": payment_method,

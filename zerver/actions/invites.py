@@ -188,14 +188,12 @@ def do_invite_users(
     check_invite_limit(realm, num_invites)
 
     if settings.BILLING_ENABLED:
-        from corporate.lib.registration import check_spare_licenses_available_for_inviting_new_users
+        from corporate.lib.registration import check_licenses_available_for_inviting_new_users
 
         if invite_as == PreregistrationUser.INVITE_AS["GUEST_USER"]:
-            check_spare_licenses_available_for_inviting_new_users(
-                realm, extra_guests_count=num_invites
-            )
+            check_licenses_available_for_inviting_new_users(realm, extra_guests_count=num_invites)
         else:
-            check_spare_licenses_available_for_inviting_new_users(
+            check_licenses_available_for_inviting_new_users(
                 realm, extra_non_guests_count=num_invites
             )
 
