@@ -19,6 +19,7 @@ const settings_data = mock_esm("../src/settings_data", {
 
 const muted_users = zrequire("muted_users");
 const people = zrequire("people");
+const user_groups = zrequire("user_groups");
 
 const welcome_bot = {
     email: "welcome-bot@example.com",
@@ -58,6 +59,23 @@ function initialize() {
 
     people._add_user(unknown_user);
 }
+
+const nobody = {
+    name: "role:nobody",
+    id: 1,
+    members: new Set([]),
+    is_system_group: true,
+    direct_subgroup_ids: new Set([]),
+};
+const everyone = {
+    name: "role:everyone",
+    id: 2,
+    members: new Set([30]),
+    is_system_group: true,
+    direct_subgroup_ids: new Set([]),
+};
+
+user_groups.initialize({realm_user_groups: [nobody, everyone]});
 
 function test_people(label, f) {
     run_test(label, (helpers) => {
@@ -264,14 +282,6 @@ const stewie = {
     },
 };
 
-// This is for error checking--never actually
-// tell people.js about this user.
-const invalid_user = {
-    email: "invalid@example.com",
-    user_id: 999,
-    unknown_local_echo_user: true,
-};
-
 function get_all_persons() {
     return people.filter_all_persons(() => true);
 }
@@ -325,6 +335,7 @@ test_people("basics", ({override}) => {
     // Now deactivate isaac
     people.deactivate(isaac);
     assert.equal(people.get_non_active_human_ids().length, 1);
+    assert.equal(people.get_non_active_user_ids_count([isaac.user_id]), 1);
     assert.equal(people.get_active_human_count(), 1);
     assert.equal(people.is_active_user_for_popover(isaac.user_id), false);
     assert.equal(people.is_valid_email_for_compose(isaac.email), true);
@@ -757,6 +768,47 @@ test_people("filtered_users", () => {
     assert.ok(filtered_people.has(noah.user_id));
 });
 
+test_people("dm_matches_search_string", () => {
+    people.add_active_user(charles);
+    people.add_active_user(maria);
+    people.add_active_user(ashton);
+    people.add_active_user(linus);
+    people.add_active_user(noah);
+    people.add_active_user(plain_noah);
+
+    let result = people.dm_matches_search_string([ashton], "a");
+    assert.ok(result);
+    // Maria's email starts with `a`.
+    result = people.dm_matches_search_string([maria], "a");
+    assert.ok(result);
+    // Neither Charles' full name or email start with `a`.
+    result = people.dm_matches_search_string([charles], "a");
+    assert.ok(!result);
+
+    // Empty search terms should always return true
+    result = people.dm_matches_search_string([charles], "");
+    assert.ok(result);
+    result = people.dm_matches_search_string([charles, maria, noah], "");
+    assert.ok(result);
+
+    // Match with email.
+    result = people.dm_matches_search_string([linus], "ltorv");
+    assert.ok(result);
+
+    // Test filtering of names with diacritics. This should match
+    // Nöôáàh by ignoring diacritics, and also match Nooaah.
+    result = people.dm_matches_search_string([noah], "noOa");
+    assert.ok(result);
+    result = people.dm_matches_search_string([plain_noah], "noOa");
+    assert.ok(result);
+
+    // This should match ëmerson, but not emerson.
+    result = people.dm_matches_search_string([noah], "ëm");
+    assert.ok(result);
+    result = people.dm_matches_search_string([plain_noah], "ëm");
+    assert.ok(!result);
+});
+
 test_people("multi_user_methods", () => {
     people.add_active_user(emp401);
     people.add_active_user(emp402);
@@ -801,7 +853,7 @@ test_people("emails_to_full_names_string", () => {
             "unknown-email@example.com",
             maria.email,
         ]),
-        `${charles.full_name}, translated: Unknown user, ${maria.full_name}`,
+        `${charles.full_name}, ${maria.full_name}, translated: Unknown user`,
     );
 });
 
@@ -836,7 +888,7 @@ test_people("message_methods", () => {
 
     assert.equal(
         people.small_avatar_url_for_person(maria),
-        "https://secure.gravatar.com/avatar/6dbdd7946b58d8b11351fcb27e5cdd55?d=identicon&s=50",
+        "https://secure.gravatar.com/avatar/6dbdd7946b58d8b11351fcb27e5cdd55?d=identicon",
     );
     assert.equal(
         people.medium_avatar_url_for_person(maria),
@@ -848,7 +900,7 @@ test_people("message_methods", () => {
     muted_users.add_muted_user(30);
     assert.deepEqual(people.sender_info_for_recent_view_row([30]), [
         {
-            avatar_url_small: "http://zulip.zulipdev.com/avatar/30?s=50",
+            avatar_url_small: "/avatar/30",
             is_muted: true,
             email: "me@example.com",
             full_name: me.full_name,
@@ -869,8 +921,8 @@ test_people("message_methods", () => {
     };
     assert.equal(people.pm_with_url(message), "#narrow/dm/301,302-group");
     assert.equal(people.pm_perma_link(message), "#narrow/dm/30,301,302-group");
-    assert.equal(people.pm_reply_to(message), "Athens@example.com,charles@example.com");
-    assert.equal(people.small_avatar_url(message), "http://charles.com/foo.png?s=50");
+    assert.equal(people.pm_reply_to(message), "charles@example.com,Athens@example.com");
+    assert.equal(people.small_avatar_url(message), "http://charles.com/foo.png");
 
     message = {
         type: "private",
@@ -880,7 +932,7 @@ test_people("message_methods", () => {
     assert.equal(people.pm_with_url(message), "#narrow/dm/302-Maria-Athens");
     assert.equal(people.pm_perma_link(message), "#narrow/dm/30,302-dm");
     assert.equal(people.pm_reply_to(message), "Athens@example.com");
-    assert.equal(people.small_avatar_url(message), "http://zulip.zulipdev.com/legacy.png?s=50");
+    assert.equal(people.small_avatar_url(message), "legacy.png");
 
     message = {
         avatar_url: undefined,
@@ -888,7 +940,7 @@ test_people("message_methods", () => {
     };
     assert.equal(
         people.small_avatar_url(message),
-        "https://secure.gravatar.com/avatar/6dbdd7946b58d8b11351fcb27e5cdd55?d=identicon&s=50",
+        "https://secure.gravatar.com/avatar/6dbdd7946b58d8b11351fcb27e5cdd55?d=identicon",
     );
 
     blueslip.expect("error", "Unknown user_id in maybe_get_user_by_id");
@@ -899,16 +951,13 @@ test_people("message_methods", () => {
     };
     assert.equal(
         people.small_avatar_url(message),
-        "https://secure.gravatar.com/avatar/b48def645758b95537d4424c84d1a9ff?d=identicon&s=50",
+        "https://secure.gravatar.com/avatar/b48def645758b95537d4424c84d1a9ff?d=identicon",
     );
 
     message = {
         sender_id: ashton.user_id,
     };
-    assert.equal(
-        people.small_avatar_url(message),
-        `http://zulip.zulipdev.com/avatar/${ashton.user_id}?s=50`,
-    );
+    assert.equal(people.small_avatar_url(message), `/avatar/${ashton.user_id}`);
 
     message = {
         type: "private",
@@ -956,7 +1005,7 @@ test_people("message_methods", () => {
 });
 
 test_people("extract_people_from_message", () => {
-    let message = {
+    const message = {
         type: "stream",
         sender_full_name: maria.full_name,
         sender_id: maria.user_id,
@@ -968,13 +1017,6 @@ test_people("extract_people_from_message", () => {
     people.extract_people_from_message(message);
     assert.ok(people.is_known_user_id(maria.user_id));
     blueslip.reset();
-
-    // Get line coverage
-    message = {
-        type: "private",
-        display_recipient: [invalid_user],
-    };
-    people.extract_people_from_message(message);
 });
 
 test_people("maybe_incr_recipient_count", () => {
@@ -998,20 +1040,6 @@ test_people("maybe_incr_recipient_count", () => {
         type: "private",
         sent_by_me: false,
         display_recipient: [maria_recip],
-    };
-    people.maybe_incr_recipient_count(message);
-    assert.equal(people.get_recipient_count(maria), 1);
-
-    const other_invalid_recip = {
-        email: "invalid2@example.com",
-        id: 500,
-        unknown_local_echo_user: true,
-    };
-
-    message = {
-        type: "private",
-        sent_by_me: true,
-        display_recipient: [other_invalid_recip],
     };
     people.maybe_incr_recipient_count(message);
     assert.equal(people.get_recipient_count(maria), 1);
@@ -1442,6 +1470,17 @@ test_people("get_user_by_id_assert_valid", ({override}) => {
     assert.equal(user.full_name, charles.full_name);
     assert.ok(!user.is_inaccessible_user);
     assert.equal(user.email, charles.email);
+});
+
+test_people("user_can_initiate_direct_message_thread", () => {
+    people.add_active_user(welcome_bot);
+    realm.realm_direct_message_initiator_group = nobody.id;
+    assert.ok(!people.user_can_initiate_direct_message_thread("32"));
+    // Can send if only bots and self are present.
+    assert.ok(people.user_can_initiate_direct_message_thread("4,30"));
+
+    realm.realm_direct_message_initiator_group = everyone.id;
+    assert.ok(people.user_can_initiate_direct_message_thread("32"));
 });
 
 // reset to native Date()

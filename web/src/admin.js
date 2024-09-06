@@ -142,6 +142,8 @@ export function build_page() {
         language_list,
         realm_default_language_name: get_language_name(realm.realm_default_language),
         realm_default_language_code: realm.realm_default_language,
+        realm_direct_message_initiator_group_id: realm.realm_direct_message_initiator_group,
+        realm_direct_message_permission_group_id: realm.realm_direct_message_permission_group,
         realm_waiting_period_threshold: realm.realm_waiting_period_threshold,
         realm_new_stream_announcements_stream_id: realm.realm_new_stream_announcements_stream_id,
         realm_signup_announcements_stream_id: realm.realm_signup_announcements_stream_id,
@@ -180,7 +182,9 @@ export function build_page() {
         can_create_multiuse_invite: settings_data.user_can_create_multiuse_invite(),
         can_invite_users_by_email: settings_data.user_can_invite_users_by_email(),
         realm_invite_required: realm.realm_invite_required,
+        can_create_user_groups: settings_data.user_can_create_user_groups(),
         policy_values: settings_config.common_policy_values,
+        realm_can_delete_any_message_group: realm.realm_can_delete_any_message_group,
         realm_delete_own_message_policy: realm.realm_delete_own_message_policy,
         DELETE_OWN_MESSAGE_POLICY_ADMINS_ONLY:
             settings_config.common_message_policy_values.by_admins_only.code,
@@ -188,14 +192,17 @@ export function build_page() {
         demote_inactive_streams_values: settings_config.demote_inactive_streams_values,
         web_mark_read_on_scroll_policy_values:
             settings_config.web_mark_read_on_scroll_policy_values,
+        web_channel_default_view_values: settings_config.web_channel_default_view_values,
         user_list_style_values: settings_config.user_list_style_values,
         web_stream_unreads_count_display_policy_values:
             settings_config.web_stream_unreads_count_display_policy_values,
+        web_animate_image_previews_values: settings_config.web_animate_image_previews_values,
         color_scheme_values: settings_config.color_scheme_values,
         web_home_view_values: settings_config.web_home_view_values,
         settings_object: realm_user_settings_defaults,
-        display_settings: settings_config.get_all_preferences(),
+        information_section_checkbox_group: settings_config.information_section_checkbox_group,
         information_density_settings: settings_config.get_information_density_preferences(),
+        settings_render_only: settings_config.get_settings_render_only(),
         settings_label: settings_config.realm_user_settings_defaults_labels,
         desktop_icon_count_display_values: settings_config.desktop_icon_count_display_values,
         enable_sound_select:
@@ -206,8 +213,6 @@ export function build_page() {
         realm_name_in_email_notifications_policy_values:
             settings_config.realm_name_in_email_notifications_policy_values,
         twenty_four_hour_time_values: settings_config.twenty_four_hour_time_values,
-        create_web_public_stream_policy_values:
-            settings_config.create_web_public_stream_policy_values,
         disable_enable_spectator_access_setting:
             !realm.server_web_public_streams_enabled || !realm.zulip_plan_is_not_limited,
         realm_push_notifications_enabled: realm.realm_push_notifications_enabled,
@@ -275,6 +280,10 @@ export function build_page() {
 
         tippy.default($("#realm_can_access_all_users_group_widget_container")[0], opts);
     }
+
+    settings_org.check_disable_direct_message_initiator_group_dropdown(
+        realm.realm_direct_message_permission_group,
+    );
 }
 
 export function launch(section, user_settings_tab) {

@@ -18,12 +18,8 @@
     {{t 'Reply to selected conversation' }}
     {{tooltip_hotkey_hints "R"}}
 </template>
-<template id="compose_reply_direct_disabled_button_tooltip_template">
-    {{t 'You are not allowed to send direct messages in this organization.' }}
-</template>
 <template id="left_bar_compose_mobile_button_tooltip_template">
-    {{t 'New message' }}
-    {{tooltip_hotkey_hints "C"}}
+    {{t 'Start new conversation' }}
 </template>
 <template id="new_topic_message_button_tooltip_template">
     {{t 'New topic' }}
@@ -120,6 +116,12 @@
         <div class="tooltip-inner-content views-tooltip-home-view-note italic hide">{{t 'This is your home view.' }}</div>
     </div>
     {{tooltip_hotkey_hints "T"}}
+</template>
+<template id="starred-message-tooltip-template">
+    <div class="views-tooltip-container">
+        <div>{{t 'Starred messages' }}</div>
+    </div>
+    {{tooltip_hotkey_hints "*"}}
 </template>
 <template id="my-reactions-tooltip-template">
     <div class="views-tooltip-container" data-view-code="recent_topics">

@@ -18,7 +18,146 @@ clients should check the `zulip_feature_level` field, present in the
 /register`](/api/register-queue) responses, to determine the API
 format used by the Zulip server that they are interacting with.
 
+## Changes in Zulip 10.0
+
+**Feature level 284**
+
+* [`GET /events`](/api/get-events), [`GET /messages`](/api/get-messages),
+  [`GET /messages/{message_id}`](/api/get-message),
+  [`POST /zulip-outgoing-webhook`](/api/zulip-outgoing-webhooks): Removed
+  the `prev_rendered_content_version` field from the `edit_history` object
+  within message objects and the `update_message` event type as it is an
+  internal server implementation detail not used by any client.
+
+**Feature level 283**
+
+* [`GET /events`](/api/get-events), [`POST /register`](/api/register-queue),
+  [`GET /user_groups`](/api/get-user-groups): Add `can_manage_group` to
+  user group objects.
+* [`POST /user_groups/create`](/api/create-user-group): Added `can_manage_group`
+  parameter to support setting the user group whose members can manage the user
+  group.
+* [`PATCH /user_groups/{user_group_id}`](/api/update-user-group): Added
+  `can_manage_group` parameter to support changing the user group whose
+  members can manage the specified user group.
+
+**Feature level 282**
+
+* `POST users/me/tutorial_status`: Removed this undocumented endpoint,
+  as the state that it maintained has been replaced by a cleaner
+  `onboarding_steps` implementation.
+
+**Feature level 281**
+
+* [`GET /events`](/api/get-events), [`POST /register`](/api/register-queue):
+  Added a new realm setting `realm_can_delete_any_message_group` which is a
+  [group-setting value](/api/group-setting-values) describing the set of
+  users with permission to delete any message in the organization.
+
+**Feature level 280**
+
+* `PATCH /realm`, [`POST /register`](/api/register-queue),
+  [`GET /events`](/api/get-events): Added `can_create_web_public_channel_group`
+  realm setting, which is a [group-setting value](/api/group-setting-values)
+  describing the set of users with permission to create web-public channels.
+* `PATCH /realm`, [`GET /events`](/api/get-events): Removed
+  `create_web_public_stream_policy` property, as the permission to create
+  web-public channels is now controlled by `can_create_web_public_channel_group`
+  setting.
+* [`POST /register`](/api/register-queue): `realm_create_web_public_stream_policy`
+  field is deprecated, having been replaced by `can_create_web_public_channel_group`.
+  Notably, this backwards-compatible `realm_create_web_public_stream_policy` value
+  now contains the superset of the true value that best approximates the actual
+  permission setting.
+
+Feature levels 278-279 are reserved for future use in 9.x maintenance
+releases.
+
 ## Changes in Zulip 9.0
+
+**Feature level 277**
+
+No changes; feature level used for Zulip 9.0 release.
+
+**Feature level 276**
+
+* [Markdown message formatting](/api/message-formatting#image-previews):
+  Image preview elements not contain a `data-original-dimensions`
+  attribute containing the dimensions of the original image.
+
+**Feature level 275**
+
+* [`POST /register`](/api/register-queue), [`PATCH
+  /settings`](/api/update-settings), [`PATCH
+  /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults):
+  Added new `web_animate_image_previews` setting, which controls how
+  animated images should be played in the web/desktop app message feed.
+
+**Feature level 274**
+
+* [`GET /events`](/api/get-events): `delete_message` events are now
+  always sent to the user who deletes the message, even if the message
+  was in a channel that the user was not subscribed to.
+
+**Feature level 273**
+
+* [`POST /register`](/api/register-queue): Added `server_thumbnail_formats`
+  describing what formats the server will thumbnail images into.
+
+**Feature level 272**
+
+* [`POST /user_uploads`](/api/upload-file): `uri` was renamed
+  to `url`, but remains available as a deprecated alias for
+  backwards-compatibility.
+
+**Feature level 271**
+
+* [`GET /messages`](/api/get-messages),
+  [`GET /messages/matches_narrow`](/api/check-messages-match-narrow),
+  [`POST /messages/flags/narrow`](/api/update-message-flags-for-narrow),
+  [`POST /register`](/api/register-queue):
+  Added support for a new [search/narrow filter](/api/construct-narrow#changes)
+  operator, `with`, which uses a message ID for its operand. It returns
+  messages in the same conversation as the message with the specified
+  ID, and is designed to be used for creating permanent links to topics
+  that continue to work when a topic is moved or resolved.
+
+**Feature level 270**
+
+* `PATCH /realm`, [`POST /register`](/api/register-queue),
+  [`GET /events`](/api/get-events): Added two new realm settings,
+  `direct_message_initiator_group`, which is a
+  [group-setting value](/api/group-setting-values) describing the
+  set of users with permission to initiate direct message thread, and
+  `direct_message_permission_group`, which is a
+  [group-setting value](/api/group-setting-values) describing the
+  set of users of which at least one member must be included as sender
+  or recipient in all personal and group direct messages.
+  Removed `private_message_policy` property, as the permission to send
+  direct messages is now controlled by `direct_message_initiator_group`
+  and `direct_message_permission_group` settings.
+
+**Feature level 269**
+
+* [`POST /register`](/api/register-queue), [`PATCH
+  /settings`](/api/update-settings), [`PATCH
+  /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults):
+  Added new user setting `web_channel_default_view`, controlling the
+  behavior of clicking a channel link in the web/desktop apps.
+
+**Feature level 268**
+
+* [`PATCH /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults),
+  [`POST /register`](/api/register-queue), [`PATCH /settings`](/api/update-settings):
+  Added a new `web_navigate_to_sent_message` setting to allow users to decide
+  whether to automatically go to conversation where they sent a message.
+
+**Feature level 267**
+
+* [`GET /invites`](/api/get-invites),[`POST /invites`](/api/send-invites): Added
+  `notify_referrer_on_join` parameter, indicating whether the referrer has opted
+  to receive a direct message from the notification bot whenever a user joins
+  via this invitation.
 
 **Feature level 266**
 
@@ -41,7 +180,7 @@ format used by the Zulip server that they are interacting with.
   [`GET /messages/matches_narrow`](/api/check-messages-match-narrow),
   [`POST /messages/flags/narrow`](/api/update-message-flags-for-narrow),
   [`POST /register`](/api/register-queue):
-  Added a new [search/narrow filter](/api/construct-narrow),
+  Added a new [search/narrow filter](/api/construct-narrow#changes),
   `is:followed`, matching messages in topics that the current user is
   [following](/help/follow-a-topic).
 
@@ -190,7 +329,7 @@ format used by the Zulip server that they are interacting with.
   [`GET /messages/matches_narrow`](/api/check-messages-match-narrow),
   [`POST /messages/flags/narrow`](/api/update-message-flags-for-narrow),
   [`POST /register`](/api/register-queue):
-  Added support for two [search/narrow filters](/api/construct-narrow)
+  Added support for two [search/narrow filters](/api/construct-narrow#changes)
   related to stream messages: `channel` and `channels`. The `channel`
   operator is an alias for the `stream` operator. The `channels`
   operator is an alias for the `streams` operator.
@@ -201,7 +340,7 @@ format used by the Zulip server that they are interacting with.
   [`GET /messages/matches_narrow`](/api/check-messages-match-narrow),
   [`POST /messages/flags/narrow`](/api/update-message-flags-for-narrow),
   [`POST /register`](/api/register-queue):
-  Added support for a new [search/narrow filter](/api/construct-narrow),
+  Added support for a new [search/narrow filter](/api/construct-narrow#changes),
   `has:reaction`, which returns messages with at least one [emoji
   reaction](/help/emoji-reactions).
 
@@ -717,8 +856,8 @@ No changes; feature level used for Zulip 8.0 release.
   [`GET /messages/matches_narrow`](/api/check-messages-match-narrow),
   [`POST /messages/flags/narrow`](/api/update-message-flags-for-narrow),
   [`POST /register`](/api/register-queue):
-  For [search/narrow filters](/api/construct-narrow) with the `id`
-  operator, added support for encoding the message ID operand as either
+  For [search/narrow filters](/api/construct-narrow#message-ids) with the
+  `id` operator, added support for encoding the message ID operand as either
   a string or an integer. Previously, only string encoding was supported.
 
 **Feature level 193**
@@ -805,8 +944,8 @@ No changes; feature level used for Zulip 7.0 release.
 
 **Feature level 182**
 
-* `POST /export/realm`: This endpoint now returns the ID of the data
-  export object created by the request.
+* [`POST /export/realm`](/api/export-realm): This endpoint now returns the ID
+  of the data export object created by the request.
 
 **Feature level 181**
 
@@ -853,7 +992,7 @@ No changes; feature level used for Zulip 7.0 release.
   [`GET /messages/matches_narrow`](/api/check-messages-match-narrow),
   [`POST /messages/flags/narrow`](/api/update-message-flags-for-narrow),
   [`POST /register`](/api/register-queue):
-  Added support for three [search/narrow filters](/api/construct-narrow)
+  Added support for three [search/narrow filters](/api/construct-narrow#changes)
   related to direct messages: `is:dm`, `dm` and `dm-including`.
   The `dm` operator replaces and deprecates the `pm-with` operator.
   The `is:dm` filter replaces and deprecates the `is:private` filter.
@@ -2301,7 +2440,7 @@ No changes; feature level used for Zulip 3.0 release.
   deprecating and replacing the `is_announcement_only` boolean.
 * [`GET /user_uploads/{realm_id_str}/{filename}`](/api/get-file-temporary-url):
   New endpoint added for requesting a temporary URL for an uploaded
-  file that does not require authentication to access (e.g. for passing
+  file that does not require authentication to access (e.g., for passing
   from a Zulip desktop, mobile, or terminal app to the user's default
   browser).
 * [`POST /register`](/api/register-queue), [`GET /events`](/api/get-events),
@@ -2325,7 +2464,7 @@ No changes; feature level used for Zulip 3.0 release.
 * [`POST /register`](/api/register-queue): Added
   `realm_default_external_accounts` to endpoint response.
 * [`GET /messages`](/api/get-messages): Added support for
-  [search/narrow options](/api/construct-narrow) that use stream/user
+  [search/narrow options](/api/construct-narrow#changes) that use stream/user
   IDs to specify a message's sender, its stream, and/or its recipient(s).
 * [`GET /users`](/api/get-users): Added `include_custom_profile_fields`
   to request custom profile field data.
@@ -2352,7 +2491,10 @@ No changes; feature level used for Zulip 3.0 release.
   window cached in a client.
 * Added `is_web_public` field to Stream objects.  This field is
   intended to support web-public streams.
-* Added `/export/realm` endpoints for triggering a data export.
+* [`GET /export/realm`](/api/get-realm-exports): Added endpoint for
+  fetching public data exports.
+  [`POST /export/realm`](/api/export-realm): Added endpoint for
+  triggering a public data export.
 * `PATCH /realm`: Added `invite_to_stream_policy`,
   `create_stream_policy`, `digest_emails_enabled`, `digest_weekday`,
   `user_group_edit_policy`, and `avatar_changes_disabled` organization settings.

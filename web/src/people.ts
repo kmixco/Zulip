@@ -14,14 +14,10 @@ import {page_params} from "./page_params";
 import * as reload_state from "./reload_state";
 import * as settings_config from "./settings_config";
 import * as settings_data from "./settings_data";
-import type {
-    StateData,
-    cross_realm_bot_schema,
-    profile_datum_schema,
-    user_schema,
-} from "./state_data";
+import type {StateData, profile_datum_schema, user_schema} from "./state_data";
 import {current_user, realm} from "./state_data";
 import * as timerender from "./timerender";
+import {is_user_in_group} from "./user_groups";
 import {user_settings} from "./user_settings";
 import * as util from "./util";
 
@@ -42,20 +38,18 @@ export type PseudoMentionUser = {
     idx: number;
 };
 
-export type CrossRealmBot = z.infer<typeof cross_realm_bot_schema>;
-
 let people_dict: FoldDict<User>;
 let people_by_name_dict: FoldDict<User>;
 let people_by_user_id_dict: Map<number, User>;
 let active_user_dict: Map<number, User>;
 let non_active_user_dict: Map<number, User>;
-let cross_realm_dict: Map<number, CrossRealmBot>;
+let cross_realm_dict: Map<number, User>;
 let pm_recipient_count_dict: Map<number, number>;
 let duplicate_full_name_data: FoldDict<Set<number>>;
 let my_user_id: number;
 
 export let INACCESSIBLE_USER_NAME: string;
-export let WELCOME_BOT: CrossRealmBot;
+export let WELCOME_BOT: User;
 
 // We have an init() function so that our automated tests
 // can easily clear data.
@@ -185,6 +179,24 @@ export function update_email(user_id: number, new_email: string): void {
     // still work correctly.
 }
 
+// A function that sorts Email according to the user's full name
+export function sort_emails_by_username(emails: string[]): (string | undefined)[] {
+    const user_ids = emails.map((email) => get_user_id(email));
+    const name_email_dict = user_ids.map((user_id, index) => ({
+        name:
+            user_id !== undefined && people_by_user_id_dict.has(user_id)
+                ? people_by_user_id_dict.get(user_id)?.full_name
+                : "?",
+        email: emails[index],
+    }));
+
+    const sorted_emails = name_email_dict
+        .sort((a, b) => util.strcmp(a.name!, b.name!))
+        .map(({email}) => email);
+
+    return sorted_emails;
+}
+
 export function get_visible_email(user: User): string {
     if (user.delivery_email) {
         return user.delivery_email;
@@ -274,9 +286,7 @@ export function user_ids_string_to_emails_string(user_ids_string: string): strin
 
     emails = emails.map((email) => email.toLowerCase());
 
-    emails.sort();
-
-    return emails.join(",");
+    return sort_emails_by_username(emails).join(",");
 }
 
 export function user_ids_string_to_ids_array(user_ids_string: string): number[] {
@@ -330,16 +340,17 @@ export function reply_to_to_user_ids_string(emails_string: string): string | und
 }
 
 export function emails_to_full_names_string(emails: string[]): string {
-    return emails
-        .map((email) => {
-            email = email.trim();
-            const person = get_by_email(email);
-            if (person !== undefined) {
-                return person.full_name;
-            }
-            return INACCESSIBLE_USER_NAME;
-        })
-        .join(", ");
+    const names = emails.map((email) => {
+        email = email.trim();
+        const person = get_by_email(email);
+        if (person !== undefined) {
+            return person.full_name;
+        }
+        return INACCESSIBLE_USER_NAME;
+    });
+
+    const sorted_names = names.sort(util.make_strcmp());
+    return sorted_names.join(", ");
 }
 
 export function get_user_time(user_id: number): string | undefined {
@@ -438,8 +449,10 @@ export function get_recipients(user_ids_string: string): string {
         return my_full_name();
     }
 
-    const names = get_display_full_names(other_ids).sort();
-    return names.join(", ");
+    const names = get_display_full_names(other_ids);
+    const sorted_names = names.sort(util.make_strcmp());
+
+    return sorted_names.join(", ");
 }
 
 export function pm_reply_user_string(message: Message | MessageWithBooleans): string | undefined {
@@ -468,9 +481,7 @@ export function pm_reply_to(message: Message): string | undefined {
         return person.email;
     });
 
-    emails.sort();
-
-    const reply_to = emails.join(",");
+    const reply_to = sort_emails_by_username(emails).join(",");
 
     return reply_to;
 }
@@ -724,12 +735,6 @@ export function exclude_me_from_string(user_ids_string: string): string {
     return user_ids.join(",");
 }
 
-export function format_small_avatar_url(raw_url: string): string {
-    const url = new URL(raw_url, window.location.origin);
-    url.search += (url.search ? "&" : "") + "s=50";
-    return url.href;
-}
-
 export function sender_is_bot(message: Message): boolean {
     if (message.sender_id) {
         const person = get_by_user_id(message.sender_id);
@@ -760,47 +765,55 @@ export function should_add_guest_user_indicator(user_id: number): boolean {
     return user.is_guest;
 }
 
-export function user_can_direct_message(recipient_ids_string: string): boolean {
-    // Common function for checking if a user can send a direct
-    // message to the target user (or group of users) represented by a
-    // user ids string.
-
-    // Regardless of policy, we allow sending direct messages to bots and to self.
+export function user_can_initiate_direct_message_thread(recipient_ids_string: string): boolean {
+    const direct_message_initiator_group_id = realm.realm_direct_message_initiator_group;
     const recipient_ids = user_ids_string_to_ids_array(recipient_ids_string);
-    if (
-        recipient_ids.length === 1 &&
-        recipient_ids[0] !== undefined &&
-        (is_valid_bot_user(recipient_ids[0]) || is_my_user_id(recipient_ids[0]))
-    ) {
+    if (is_user_in_group(direct_message_initiator_group_id, my_user_id)) {
         return true;
     }
-
-    if (
-        realm.realm_private_message_policy ===
-        settings_config.private_message_policy_values.disabled.code
-    ) {
-        return false;
+    for (const recipient of recipient_ids) {
+        if (!is_valid_bot_user(recipient) && recipient !== my_user_id) {
+            return false;
+        }
     }
     return true;
 }
 
+export function user_can_direct_message(recipient_ids_string: string): boolean {
+    const direct_message_permission_group_id = realm.realm_direct_message_permission_group;
+    const recipient_ids = user_ids_string_to_ids_array(recipient_ids_string);
+    if (is_user_in_group(direct_message_permission_group_id, my_user_id)) {
+        return true;
+    }
+
+    let other_human_recipients_exist = false;
+    for (const recipient_id of recipient_ids) {
+        if (is_valid_bot_user(recipient_id) || recipient_id === my_user_id) {
+            continue;
+        }
+        if (is_user_in_group(direct_message_permission_group_id, recipient_id)) {
+            return true;
+        }
+        other_human_recipients_exist = true;
+    }
+    return !other_human_recipients_exist;
+}
+
 function gravatar_url_for_email(email: string): string {
     const hash = md5(email.toLowerCase());
-    const avatar_url = "https://secure.gravatar.com/avatar/" + hash + "?d=identicon";
-    const small_avatar_url = format_small_avatar_url(avatar_url);
-    return small_avatar_url;
+    return "https://secure.gravatar.com/avatar/" + hash + "?d=identicon";
 }
 
 export function small_avatar_url_for_person(person: User): string {
     if (person.avatar_url) {
-        return format_small_avatar_url(person.avatar_url);
+        return person.avatar_url;
     }
 
     if (person.avatar_url === null) {
         return gravatar_url_for_email(person.email);
     }
 
-    return format_small_avatar_url(`/avatar/${person.user_id}`);
+    return `/avatar/${person.user_id}`;
 }
 
 function medium_gravatar_url_for_email(email: string): string {
@@ -872,7 +885,7 @@ export function small_avatar_url(message: Message): string {
     // or if the avatar was missing. We do this verbosely to avoid false
     // positives on line coverage (we don't do branch checking).
     if (message.avatar_url) {
-        return format_small_avatar_url(message.avatar_url);
+        return message.avatar_url;
     }
 
     if (person && person.avatar_url === undefined) {
@@ -881,7 +894,7 @@ export function small_avatar_url(message: Message): string {
         // required to take advantage of the user_avatar_url_field_optional
         // optimization, which saves a huge amount of network traffic on
         // servers with 10,000s of user accounts.
-        return format_small_avatar_url(`/avatar/${person.user_id}`);
+        return `/avatar/${person.user_id}`;
     }
 
     // For computing the user's email, we first trust the person
@@ -1019,6 +1032,16 @@ export function get_non_active_human_ids(): number[] {
     }
 
     return human_ids;
+}
+
+export function get_non_active_user_ids_count(user_ids: number[]): number {
+    let count = 0;
+    for (const user_id of user_ids) {
+        if (non_active_user_dict.has(user_id)) {
+            count += 1;
+        }
+    }
+    return count;
 }
 
 export function get_bot_ids(): number[] {
@@ -1209,6 +1232,12 @@ export function filter_people_by_search_terms(users: User[], search_string: stri
     return filtered_users;
 }
 
+export function dm_matches_search_string(users: User[], search_string: string): boolean {
+    const matcher = build_person_matcher(search_string);
+
+    return users.some((user) => matcher(user));
+}
+
 export const is_valid_full_name_and_user_id = (full_name: string, user_id: number): boolean => {
     /*
         This function is currently only used for checking
@@ -1386,7 +1415,7 @@ export const is_person_active = (user_id: number): boolean => {
     return active_user_dict.has(user_id);
 };
 
-export function add_cross_realm_user(person: CrossRealmBot): void {
+export function add_cross_realm_user(person: User): void {
     if (!people_dict.has(person.email)) {
         _add_user(person);
     }
@@ -1505,7 +1534,6 @@ function get_involved_people(message: MessageWithBooleans): DisplayRecipientUser
                 full_name: message.sender_full_name,
                 id: message.sender_id,
                 email: message.sender_email,
-                is_mirror_dummy: false,
             },
         ];
     } else if (message.type === "private") {
@@ -1524,10 +1552,6 @@ export function extract_people_from_message(message: MessageWithBooleans): void 
 
     // Add new people involved in this message to the people list
     for (const person of involved_people) {
-        if (person.unknown_local_echo_user) {
-            continue;
-        }
-
         const user_id = person.id;
 
         if (people_by_user_id_dict.has(user_id)) {
@@ -1603,10 +1627,6 @@ export function maybe_incr_recipient_count(
     // Track the number of direct messages we've sent to this person
     // to improve autocomplete
     for (const recip of message.display_recipient) {
-        if (recip.unknown_local_echo_user) {
-            continue;
-        }
-
         const user_id = recip.id;
         incr_recipient_count(user_id);
     }

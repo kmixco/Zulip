@@ -1,11 +1,12 @@
 import itertools
 from collections import defaultdict
+from collections.abc import Collection
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from operator import itemgetter
-from typing import AbstractSet, Any, Collection, Dict, List, Optional, Set
+from typing import Any
 
 from django.db.models import Q, QuerySet
-from django_stubs_ext import ValuesQuerySet
 
 from zerver.models import AlertWord, Realm, Recipient, Stream, Subscription, UserProfile, UserTopic
 
@@ -19,8 +20,8 @@ class SubInfo:
 
 @dataclass
 class SubscriberPeerInfo:
-    subscribed_ids: Dict[int, Set[int]]
-    private_peer_dict: Dict[int, Set[int]]
+    subscribed_ids: dict[int, set[int]]
+    private_peer_dict: dict[int, set[int]]
 
 
 def get_active_subscriptions_for_stream_id(
@@ -40,7 +41,7 @@ def get_active_subscriptions_for_stream_id(
     return query
 
 
-def get_active_subscriptions_for_stream_ids(stream_ids: Set[int]) -> QuerySet[Subscription]:
+def get_active_subscriptions_for_stream_ids(stream_ids: set[int]) -> QuerySet[Subscription]:
     return Subscription.objects.filter(
         recipient__type=Recipient.STREAM,
         recipient__type_id__in=stream_ids,
@@ -51,7 +52,7 @@ def get_active_subscriptions_for_stream_ids(stream_ids: Set[int]) -> QuerySet[Su
 
 def get_subscribed_stream_ids_for_user(
     user_profile: UserProfile,
-) -> ValuesQuerySet[Subscription, int]:
+) -> QuerySet[Subscription, int]:
     return Subscription.objects.filter(
         user_profile_id=user_profile,
         recipient__type=Recipient.STREAM,
@@ -61,7 +62,7 @@ def get_subscribed_stream_ids_for_user(
 
 def get_subscribed_stream_recipient_ids_for_user(
     user_profile: UserProfile,
-) -> ValuesQuerySet[Subscription, int]:
+) -> QuerySet[Subscription, int]:
     return Subscription.objects.filter(
         user_profile_id=user_profile,
         recipient__type=Recipient.STREAM,
@@ -76,7 +77,7 @@ def get_stream_subscriptions_for_user(user_profile: UserProfile) -> QuerySet[Sub
     )
 
 
-def get_used_colors_for_user_ids(user_ids: List[int]) -> Dict[int, Set[str]]:
+def get_used_colors_for_user_ids(user_ids: list[int]) -> dict[int, set[str]]:
     """Fetch which stream colors have already been used for each user in
     user_ids. Uses an optimized query designed to support picking
     colors when bulk-adding users to streams, which requires
@@ -92,7 +93,7 @@ def get_used_colors_for_user_ids(user_ids: List[int]) -> Dict[int, Set[str]]:
         .distinct()
     )
 
-    result: Dict[int, Set[str]] = defaultdict(set)
+    result: dict[int, set[str]] = defaultdict(set)
 
     for row in query:
         assert row["color"] is not None
@@ -102,9 +103,9 @@ def get_used_colors_for_user_ids(user_ids: List[int]) -> Dict[int, Set[str]]:
 
 
 def get_bulk_stream_subscriber_info(
-    users: List[UserProfile],
-    streams: List[Stream],
-) -> Dict[int, List[SubInfo]]:
+    users: list[UserProfile],
+    streams: list[Stream],
+) -> dict[int, list[SubInfo]]:
     stream_ids = {stream.id for stream in streams}
 
     subs = Subscription.objects.filter(
@@ -117,7 +118,7 @@ def get_bulk_stream_subscriber_info(
     stream_map = {stream.recipient_id: stream for stream in streams}
     user_map = {user.id: user for user in users}
 
-    result: Dict[int, List[SubInfo]] = {user.id: [] for user in users}
+    result: dict[int, list[SubInfo]] = {user.id: [] for user in users}
 
     for sub in subs:
         user_id = sub.user_profile_id
@@ -141,7 +142,7 @@ def num_subscribers_for_stream_id(stream_id: int) -> int:
     ).count()
 
 
-def get_user_ids_for_streams(stream_ids: Set[int]) -> Dict[int, Set[int]]:
+def get_user_ids_for_streams(stream_ids: set[int]) -> dict[int, set[int]]:
     all_subs = (
         get_active_subscriptions_for_stream_ids(stream_ids)
         .values(
@@ -155,7 +156,7 @@ def get_user_ids_for_streams(stream_ids: Set[int]) -> Dict[int, Set[int]]:
 
     get_stream_id = itemgetter("recipient__type_id")
 
-    result: Dict[int, Set[int]] = defaultdict(set)
+    result: dict[int, set[int]] = defaultdict(set)
     for stream_id, rows in itertools.groupby(all_subs, get_stream_id):
         user_ids = {row["user_profile_id"] for row in rows}
         result[stream_id] = user_ids
@@ -163,14 +164,14 @@ def get_user_ids_for_streams(stream_ids: Set[int]) -> Dict[int, Set[int]]:
     return result
 
 
-def get_users_for_streams(stream_ids: Set[int]) -> Dict[int, Set[UserProfile]]:
+def get_users_for_streams(stream_ids: set[int]) -> dict[int, set[UserProfile]]:
     all_subs = (
         get_active_subscriptions_for_stream_ids(stream_ids)
         .select_related("user_profile", "recipient")
         .order_by("recipient__type_id")
     )
 
-    result: Dict[int, Set[UserProfile]] = defaultdict(set)
+    result: dict[int, set[UserProfile]] = defaultdict(set)
     for stream_id, rows in itertools.groupby(all_subs, key=lambda obj: obj.recipient.type_id):
         users = {row.user_profile for row in rows}
         result[stream_id] = users
@@ -230,8 +231,8 @@ def bulk_get_subscriber_peer_info(
 
 
 def handle_stream_notifications_compatibility(
-    user_profile: Optional[UserProfile],
-    stream_dict: Dict[str, Any],
+    user_profile: UserProfile | None,
+    stream_dict: dict[str, Any],
     notification_settings_null: bool,
 ) -> None:
     # Old versions of the mobile apps don't support `None` as a
@@ -262,7 +263,7 @@ def handle_stream_notifications_compatibility(
         )
 
 
-def subscriber_ids_with_stream_history_access(stream: Stream) -> Set[int]:
+def subscriber_ids_with_stream_history_access(stream: Stream) -> set[int]:
     """Returns the set of active user IDs who can access any message
     history on this stream (regardless of whether they have a
     UserMessage) based on the stream's configuration.

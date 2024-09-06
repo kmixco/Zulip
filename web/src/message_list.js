@@ -3,6 +3,7 @@ import $ from "jquery";
 import assert from "minimalistic-assert";
 
 import * as blueslip from "./blueslip";
+import * as compose_tooltips from "./compose_tooltips";
 import {MessageListData} from "./message_list_data";
 import * as message_list_tooltips from "./message_list_tooltips";
 import {MessageListView} from "./message_list_view";
@@ -373,20 +374,34 @@ export class MessageList {
     // Maintains a trailing bookend element explaining any changes in
     // your subscribed/unsubscribed status at the bottom of the
     // message list.
-    update_trailing_bookend() {
+    update_trailing_bookend(force_render = false) {
         this.view.clear_trailing_bookend();
         if (this.is_combined_feed_view) {
             return;
         }
-        const stream_name = narrow_state.stream_name();
-        if (stream_name === undefined) {
+
+        const stream_id = narrow_state.stream_id();
+        if (stream_id === undefined) {
+            // Trailing bookends are only for channel views.
+            return;
+        }
+
+        // If user narrows to a stream, don't update
+        // trailing bookend if user is subscribed.
+        const sub = stream_data.get_sub_by_id(stream_id);
+        if (
+            sub &&
+            sub.subscribed &&
+            !this.last_message_historical &&
+            !page_params.is_spectator &&
+            !force_render
+        ) {
             return;
         }
 
         let deactivated = false;
         let just_unsubscribed = false;
-        const subscribed = stream_data.is_subscribed_by_name(stream_name);
-        const sub = stream_data.get_sub(stream_name);
+        const subscribed = stream_data.is_subscribed(stream_id);
         const invite_only = sub && sub.invite_only;
         const is_web_public = sub && sub.is_web_public;
         const can_toggle_subscription =
@@ -398,7 +413,7 @@ export class MessageList {
         }
 
         this.view.render_trailing_bookend(
-            stream_name,
+            sub.name,
             subscribed,
             deactivated,
             just_unsubscribed,
@@ -432,20 +447,22 @@ export class MessageList {
         if ($row.find(".message_edit_form form").length !== 0) {
             return;
         }
-        $row.find(".message_edit_form").append($form);
+        $row.find(".messagebox-content").append($form);
         $row.find(".message_content, .status-message, .message_controls").hide();
         $row.find(".messagebox-content").addClass("content_edit_mode");
-        $row.find(".message_edit").css("display", "block");
         // autosize will not change the height of the textarea if the `$row` is not
         // rendered in DOM yet. So, we call `autosize.update` post render.
         autosize($row.find(".message_edit_content"));
     }
 
     hide_edit_message($row) {
+        if ($row.find(".message_edit_form form").length === 0) {
+            return;
+        }
+        compose_tooltips.hide_compose_control_button_tooltips($row);
         $row.find(".message_content, .status-message, .message_controls").show();
-        $row.find(".message_edit_form").empty();
         $row.find(".messagebox-content").removeClass("content_edit_mode");
-        $row.find(".message_edit").hide();
+        $row.find(".message_edit").remove();
         $row.trigger("mouseleave");
     }
 

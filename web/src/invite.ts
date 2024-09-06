@@ -30,6 +30,7 @@ import * as stream_pill from "./stream_pill";
 import * as timerender from "./timerender";
 import type {HTMLSelectOneElement} from "./types";
 import * as ui_report from "./ui_report";
+import * as util from "./util";
 
 let custom_expiration_time_input = 10;
 let custom_expiration_time_unit = "days";
@@ -47,6 +48,7 @@ function reset_error_messages(): void {
 function get_common_invitation_data(): {
     csrfmiddlewaretoken: string;
     invite_as: number;
+    notify_referrer_on_join: boolean;
     stream_ids: string;
     invite_expires_in_minutes: string;
     invitee_emails: string;
@@ -56,6 +58,7 @@ function get_common_invitation_data(): {
         $<HTMLSelectOneElement>("select:not([multiple])#invite_as").val()!,
         10,
     );
+    const notify_referrer_on_join = $("#receive-invite-acceptance-notification").is(":checked");
     const raw_expires_in = $<HTMLSelectOneElement>("select:not([multiple])#expires_in").val()!;
     // See settings_config.expires_in_values for why we do this conversion.
     let expires_in: number | null;
@@ -82,6 +85,7 @@ function get_common_invitation_data(): {
     const data = {
         csrfmiddlewaretoken: csrf_token,
         invite_as,
+        notify_referrer_on_join,
         stream_ids: JSON.stringify(stream_ids),
         invite_expires_in_minutes: JSON.stringify(expires_in),
         invitee_emails: pills
@@ -205,7 +209,7 @@ function submit_invitation_form(): void {
             $("#invite-user-modal .dialog_submit_button").text($t({defaultMessage: "Invite"}));
             $("#invite-user-modal .dialog_submit_button").prop("disabled", false);
             $("#invite-user-modal .dialog_exit_button").prop("disabled", false);
-            $invite_status[0]!.scrollIntoView();
+            util.the($invite_status).scrollIntoView();
         },
     });
 }
@@ -225,7 +229,7 @@ function generate_multiuse_invite(): void {
             clipboard.on("success", () => {
                 const tippy_timeout_in_ms = 800;
                 show_copied_confirmation(
-                    $("#copy_generated_invite_link")[0]!,
+                    util.the($("#copy_generated_invite_link")),
                     () => {
                         // Do nothing on hide
                     },
@@ -237,12 +241,10 @@ function generate_multiuse_invite(): void {
             ui_report.error("", xhr, $invite_status);
         },
         complete() {
-            $("#invite-user-modal .dialog_submit_button").text(
-                $t({defaultMessage: "Generate invite link"}),
-            );
+            $("#invite-user-modal .dialog_submit_button").text($t({defaultMessage: "Create link"}));
             $("#invite-user-modal .dialog_submit_button").prop("disabled", false);
             $("#invite-user-modal .dialog_exit_button").prop("disabled", false);
-            $invite_status[0]!.scrollIntoView();
+            util.the($invite_status).scrollIntoView();
         },
     });
 }
@@ -301,7 +303,7 @@ function set_streams_to_join_list_visibility(): void {
     const realm_has_default_streams = stream_data.get_default_stream_ids().length !== 0;
     const hide_streams_list =
         realm_has_default_streams &&
-        $<HTMLInputElement>("input#invite_select_default_streams")[0]!.checked;
+        util.the($<HTMLInputElement>("input#invite_select_default_streams")).checked;
     if (hide_streams_list) {
         $(".add_streams_container").hide();
     } else {
@@ -345,6 +347,7 @@ function open_invite_user_modal(e: JQuery.ClickEvent<Document, undefined>): void
             $container: $pill_container,
             create_item_from_text: email_pill.create_item_from_email,
             get_text_from_item: email_pill.get_email_from_item,
+            get_display_value_from_item: email_pill.get_email_from_item,
         });
 
         $("#invite-user-modal .dialog_submit_button").prop("disabled", true);
@@ -384,10 +387,10 @@ function open_invite_user_modal(e: JQuery.ClickEvent<Document, undefined>): void
             );
             if (selected_tab === "invite-email-tab") {
                 $button.text($t({defaultMessage: "Invite"}));
-                $button.attr("data-loading-text", $t({defaultMessage: "Inviting..."}));
+                $button.attr("data-loading-text", $t({defaultMessage: "Inviting…"}));
             } else {
-                $button.text($t({defaultMessage: "Generate invite link"}));
-                $button.attr("data-loading-text", $t({defaultMessage: "Generating link..."}));
+                $button.text($t({defaultMessage: "Create link"}));
+                $button.attr("data-loading-text", $t({defaultMessage: "Creating link…"}));
             }
         }
 
@@ -452,16 +455,18 @@ function open_invite_user_modal(e: JQuery.ClickEvent<Document, undefined>): void
             selected: 0,
             child_wants_focus: true,
             values: [
-                {label: $t({defaultMessage: "Send invite email"}), key: "invite-email-tab"},
-                {label: $t({defaultMessage: "Create invite link"}), key: "invite-link-tab"},
+                {label: $t({defaultMessage: "Email invitation"}), key: "invite-email-tab"},
+                {label: $t({defaultMessage: "Invitation link"}), key: "invite-link-tab"},
             ],
             callback(_name, key) {
                 switch (key) {
                     case "invite-email-tab":
                         $("#invitee_emails_container").show();
+                        $("#receive-invite-acceptance-notification-container").show();
                         break;
                     case "invite-link-tab":
                         $("#invitee_emails_container").hide();
+                        $("#receive-invite-acceptance-notification-container").hide();
                         break;
                 }
                 toggle_invite_submit_button(key);

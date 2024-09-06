@@ -4,9 +4,9 @@ import type {Page} from "puppeteer";
 
 import * as common from "./lib/common";
 
-async function navigate_using_left_sidebar(page: Page, click_target: string): Promise<void> {
-    console.log("Visiting #" + click_target);
-    await page.click(`#left-sidebar a[href='#${CSS.escape(click_target)}']`);
+async function navigate_using_left_sidebar(page: Page, stream_name: string): Promise<void> {
+    console.log("Visiting #" + stream_name);
+    await page.click(`.stream-name[title="${stream_name}"]`);
     await page.waitForSelector(`#message_feed_container`, {visible: true});
 }
 
@@ -60,7 +60,7 @@ async function navigate_to_private_messages(page: Page): Promise<void> {
     await page.waitForSelector(all_private_messages_icon, {visible: true});
     await page.click(all_private_messages_icon);
 
-    await page.waitForSelector("#message_view_header .fa-envelope", {visible: true});
+    await page.waitForSelector("#message_view_header .zulip-icon-user", {visible: true});
 }
 
 async function test_reload_hash(page: Page): Promise<void> {
@@ -71,6 +71,8 @@ async function test_reload_hash(page: Page): Promise<void> {
     const initial_hash = await page.evaluate(() => window.location.hash);
 
     await page.evaluate(() => {
+        // We haven't converted reload.js to TypeScript yet.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         zulip_test.initiate_reload({immediate: true});
     });
     await page.waitForNavigation();
@@ -92,10 +94,7 @@ async function navigation_tests(page: Page): Promise<void> {
 
     await navigate_to_settings(page);
 
-    const verona_id = await page.evaluate(() => zulip_test.get_stream_id("Verona"));
-    const verona_narrow = `narrow/stream/${verona_id}-Verona`;
-
-    await navigate_using_left_sidebar(page, verona_narrow);
+    await navigate_using_left_sidebar(page, "Verona");
 
     await page.click("#left-sidebar-navigation-list .home-link");
     await page.waitForSelector("#message_feed_container", {visible: true});
@@ -108,7 +107,7 @@ async function navigation_tests(page: Page): Promise<void> {
     await navigate_to_settings(page);
     await navigate_to_private_messages(page);
     await navigate_to_subscriptions(page);
-    await navigate_using_left_sidebar(page, verona_narrow);
+    await navigate_using_left_sidebar(page, "Verona");
 
     await test_reload_hash(page);
 

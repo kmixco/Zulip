@@ -31,6 +31,7 @@ export const invite_schema = z.intersection(
         z.object({
             is_multiuse: z.literal(false),
             email: z.string(),
+            notify_referrer_on_join: z.boolean(),
         }),
         z.object({
             is_multiuse: z.literal(true),
@@ -46,6 +47,7 @@ type Invite = z.output<typeof invite_schema> & {
     disable_buttons?: boolean;
     referrer_name?: string;
     img_src?: string;
+    notify_referrer_on_join?: boolean;
 };
 
 const meta = {
@@ -109,7 +111,7 @@ function populate_invites(invites_data: {invites: Invite[]}): void {
         },
         filter: {
             $element: $invites_table
-                .closest(".settings-section")
+                .closest(".user-settings-section")
                 .find<HTMLInputElement>("input.search"),
             predicate(item, value) {
                 const referrer = people.get_by_user_id(item.invited_by_user_id);

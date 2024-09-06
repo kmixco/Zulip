@@ -14,7 +14,6 @@ import render_user_with_status_icon from "../templates/user_with_status_icon.hbs
 import * as blueslip from "./blueslip";
 import * as buddy_data from "./buddy_data";
 import * as compose_closed_ui from "./compose_closed_ui";
-import * as compose_state from "./compose_state";
 import * as dialog_widget from "./dialog_widget";
 import * as dropdown_widget from "./dropdown_widget";
 import type {DropdownWidget} from "./dropdown_widget";
@@ -29,18 +28,14 @@ import type {MessageListData} from "./message_list_data";
 import * as message_store from "./message_store";
 import type {DisplayRecipientUser, Message} from "./message_store";
 import * as message_util from "./message_util";
-import * as modals from "./modals";
 import * as muted_users from "./muted_users";
 import * as onboarding_steps from "./onboarding_steps";
-import * as overlays from "./overlays";
 import {page_params} from "./page_params";
 import * as people from "./people";
-import * as popovers from "./popovers";
 import * as recent_senders from "./recent_senders";
 import * as recent_view_data from "./recent_view_data";
 import type {ConversationData} from "./recent_view_data";
 import * as recent_view_util from "./recent_view_util";
-import * as sidebar_ui from "./sidebar_ui";
 import * as stream_data from "./stream_data";
 import * as sub_store from "./sub_store";
 import * as timerender from "./timerender";
@@ -49,6 +44,7 @@ import * as unread from "./unread";
 import {user_settings} from "./user_settings";
 import * as user_status from "./user_status";
 import * as user_topics from "./user_topics";
+import * as util from "./util";
 import * as views_util from "./views_util";
 
 type Row = {
@@ -144,15 +140,7 @@ export function save_filters(): void {
 
 export function is_in_focus(): boolean {
     // Check if user is focused on Recent Conversations.
-    return (
-        recent_view_util.is_visible() &&
-        !compose_state.composing() &&
-        !popovers.any_active() &&
-        !sidebar_ui.any_sidebar_expanded_as_overlay() &&
-        !overlays.any_active() &&
-        !modals.any_active() &&
-        !$(".home-page-input").is(":focus")
-    );
+    return recent_view_util.is_visible() && views_util.is_in_focus();
 }
 
 export function set_default_focus(): void {
@@ -340,7 +328,7 @@ function set_table_focus(row: number, col: number, using_keyboard = false): bool
     $current_focus_elem = "table";
 
     if (using_keyboard) {
-        const scroll_element = $("html")[0]!;
+        const scroll_element = util.the($("html"));
         const half_height_of_visible_area = scroll_element.offsetHeight / 2;
         const topic_offset = topic_offset_to_visible_area($topic_row);
 
@@ -800,11 +788,42 @@ export function topic_in_search_results(
 
 export function update_topics_of_deleted_message_ids(message_ids: number[]): void {
     const topics_to_rerender = message_util.get_topics_for_message_ids(message_ids);
-
+    const msgs_to_process = [];
     for (const [stream_id, topic] of topics_to_rerender.values()) {
         recent_view_data.conversations.delete(recent_view_util.get_topic_key(stream_id, topic));
         const msgs = message_util.get_messages_in_topic(stream_id, topic);
-        process_messages(msgs);
+        msgs_to_process.push(...msgs);
+    }
+
+    const dm_conversations_to_rerender = new Set<string>();
+    for (const msg_id of message_ids) {
+        const msg = message_store.get(msg_id);
+        if (msg === undefined) {
+            continue;
+        }
+
+        if (msg.type === "private") {
+            const key = recent_view_util.get_key_from_message(msg);
+            // Important to assert since we use the key in get_messages_in_dm_conversation.
+            assert(key === msg.to_user_ids);
+            dm_conversations_to_rerender.add(key);
+        }
+    }
+
+    for (const key of dm_conversations_to_rerender) {
+        recent_view_data.conversations.delete(key);
+    }
+    if (dm_conversations_to_rerender.size > 0) {
+        const dm_messages_to_process = message_util.get_messages_in_dm_conversations(
+            dm_conversations_to_rerender,
+        );
+        msgs_to_process.push(...dm_messages_to_process);
+    }
+
+    if (msgs_to_process.length > 0) {
+        process_messages(msgs_to_process);
+    } else {
+        complete_rerender();
     }
 }
 
@@ -1130,10 +1149,10 @@ function topic_offset_to_visible_area($topic_row: JQuery): string | undefined {
     }
 
     // Rows are only visible below thead bottom and above compose top.
-    const thead_bottom = $("#recent-view-table-headers")[0]!.getBoundingClientRect().bottom;
+    const thead_bottom = util.the($("#recent-view-table-headers")).getBoundingClientRect().bottom;
     const compose_top = window.innerHeight - $("#compose").outerHeight(true)!;
 
-    const topic_props = $topic_row[0]!.getBoundingClientRect();
+    const topic_props = util.the($topic_row).getBoundingClientRect();
 
     // Topic is above the visible scroll region.
     if (topic_props.top < thead_bottom) {
@@ -1167,7 +1186,7 @@ function recenter_focus_if_off_screen(): void {
 
     if (topic_offset !== "visible") {
         // Get the element at the center of the table.
-        const thead_props = $("#recent-view-table-headers")[0]!.getBoundingClientRect();
+        const thead_props = util.the($("#recent-view-table-headers")).getBoundingClientRect();
         const compose_top = window.innerHeight - $("#compose").outerHeight(true)!;
         const topic_center_x = (thead_props.left + thead_props.right) / 2;
         const topic_center_y = (thead_props.bottom + compose_top) / 2;
@@ -1353,9 +1372,12 @@ export function show(): void {
         dialog_widget.launch({
             html_heading: $t_html({defaultMessage: "Welcome to <b>recent conversations</b>!"}),
             html_body,
-            html_submit_button: $t_html({defaultMessage: "Continue"}),
+            html_submit_button: $t_html({defaultMessage: "Got it"}),
             on_click() {
                 /* This widget is purely informational and clicking only closes it. */
+            },
+            on_hidden() {
+                revive_current_focus();
             },
             single_footer_button: true,
             focus_submit_on_open: true,
@@ -1456,7 +1478,7 @@ function down_arrow_navigation(): void {
 }
 
 function get_page_up_down_delta(): number {
-    const thead_bottom = $("#recent-view-table-headers")[0]!.getBoundingClientRect().bottom;
+    const thead_bottom = util.the($("#recent-view-table-headers")).getBoundingClientRect().bottom;
     const compose_box_top = window.innerHeight - $("#compose").outerHeight(true)!;
     // One usually wants PageDown to move what had been the bottom row
     // to now be at the top, so one can be confident one will see

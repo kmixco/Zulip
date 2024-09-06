@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 import orjson
 import time_machine
+from django.conf import settings
 from django.utils.timezone import now as timezone_now
 from typing_extensions import override
 
@@ -22,6 +23,7 @@ from corporate.models import (
     get_current_plan_by_customer,
     get_customer_by_realm,
 )
+from zerver.actions.create_realm import do_create_realm
 from zerver.actions.invites import do_create_multiuse_invite_link
 from zerver.actions.realm_settings import do_change_realm_org_type, do_send_realm_reactivation_email
 from zerver.actions.user_settings import do_change_user_setting
@@ -168,6 +170,13 @@ class TestRemoteServerSupportEndpoint(ZulipTestCase):
             remote_server=remote_realm.server, email="server-admin@example.com"
         )
 
+    def test_remote_support_view_queries(self) -> None:
+        iago = self.example_user("iago")
+        self.login_user(iago)
+        with self.assert_database_query_count(28):
+            result = self.client_get("/activity/remote/support", {"q": "zulip-3.example.com"})
+            self.assertEqual(result.status_code, 200)
+
     def test_search(self) -> None:
         def assert_server_details_in_response(
             html_response: "TestHttpResponse", hostname: str
@@ -198,7 +207,7 @@ class TestRemoteServerSupportEndpoint(ZulipTestCase):
                     f"<h3>{name}</h3>",
                     f"<b>Remote realm host:</b> {host}<br />",
                     "<b>Date created</b>: 01 December 2023",
-                    "<b>Org type</b>: Unspecified<br />",
+                    "<b>Organization type</b>: Unspecified<br />",
                     "<b>Has remote realms</b>: True<br />",
                     "📶 Push notification status:",
                 ],
@@ -220,7 +229,7 @@ class TestRemoteServerSupportEndpoint(ZulipTestCase):
                     "<b>UUID</b>:",
                     "<b>Zulip version</b>:",
                     "📶 Push notification status:",
-                    "💸 Discount and sponsorship information:",
+                    "💸 Discounts and sponsorship information:",
                 ],
                 result,
             )
@@ -502,6 +511,50 @@ class TestRemoteServerSupportEndpoint(ZulipTestCase):
             ["Cannot update current plan for realm-name-5 to end on 2020-01-01."], result
         )
 
+    def test_configure_temporary_courtesy_plan(self) -> None:
+        iago = self.example_user("iago")
+        self.login_user(iago)
+        remote_realm = RemoteRealm.objects.get(name="realm-name-4")
+        # Cannot configure courtesy plan to end in the past.
+        result = self.client_post(
+            "/activity/remote/support",
+            {
+                "remote_realm_id": f"{remote_realm.id}",
+                "temporary_courtesy_plan": "2010-03-01",
+            },
+        )
+        self.assert_in_success_response(
+            ["Cannot configure a courtesy plan for realm-name-4 to end on 2010-03-01."],
+            result,
+        )
+        # Cannot configure courtesy plan if there is a current plan for billing entity.
+        result = self.client_post(
+            "/activity/remote/support",
+            {
+                "remote_realm_id": f"{remote_realm.id}",
+                "temporary_courtesy_plan": "2050-03-01",
+            },
+        )
+        self.assert_in_success_response(
+            ["Cannot configure a courtesy plan for realm-name-4 because of current plan."],
+            result,
+        )
+        remote_realm = RemoteRealm.objects.get(name="realm-name-2")
+        assert remote_realm.plan_type == RemoteRealm.PLAN_TYPE_SELF_MANAGED
+        result = self.client_post(
+            "/activity/remote/support",
+            {
+                "remote_realm_id": f"{remote_realm.id}",
+                "temporary_courtesy_plan": "2050-03-01",
+            },
+        )
+        self.assert_in_success_response(
+            ["Temporary courtesy plan for realm-name-2 configured to end on 2050-03-01."],
+            result,
+        )
+        remote_realm.refresh_from_db()
+        assert remote_realm.plan_type == RemoteRealm.PLAN_TYPE_SELF_MANAGED_LEGACY
+
     def test_discount_support_actions_when_upgrade_scheduled(self) -> None:
         remote_realm = RemoteRealm.objects.get(name="realm-name-4")
         billing_session = RemoteRealmBillingSession(remote_realm=remote_realm)
@@ -691,6 +744,13 @@ class TestSupportEndpoint(ZulipTestCase):
         )
         return customer
 
+    def test_realm_support_view_queries(self) -> None:
+        iago = self.example_user("iago")
+        self.login_user(iago)
+        with self.assert_database_query_count(18):
+            result = self.client_get("/activity/support", {"q": "zulip"}, subdomain="zulip")
+            self.assertEqual(result.status_code, 200)
+
     def test_search(self) -> None:
         reset_email_visibility_to_everyone_in_zulip_realm()
         lear_user = self.lear_user("king")
@@ -712,9 +772,7 @@ class TestSupportEndpoint(ZulipTestCase):
                 html_response,
             )
 
-        def create_invitation(
-            stream: str, invitee_email: str, realm: Optional[Realm] = None
-        ) -> None:
+        def create_invitation(stream: str, invitee_email: str, realm: Realm | None = None) -> None:
             invite_expires_in_minutes = 10 * 24 * 60
             with self.captureOnCommitCallbacks(execute=True):
                 self.client_post(
@@ -1112,8 +1170,57 @@ class TestSupportEndpoint(ZulipTestCase):
             )
             m.assert_called_once_with(get_realm("zulip"), 70, acting_user=iago)
             self.assert_in_success_response(
-                ["Org type of zulip changed from Business to Government"], result
+                ["Organization type of zulip changed from Business to Government"], result
             )
+
+    def test_change_max_invites(self) -> None:
+        realm = get_realm("zulip")
+        iago = self.example_user("iago")
+        self.login_user(iago)
+
+        self.assertEqual(realm.max_invites, settings.INVITES_DEFAULT_REALM_DAILY_MAX)
+        result = self.client_post(
+            "/activity/support", {"realm_id": f"{realm.id}", "max_invites": "1"}
+        )
+        self.assert_in_success_response(
+            [
+                "Cannot update maximum number of daily invitations for zulip, because 1 is less than the default for the current plan type."
+            ],
+            result,
+        )
+        realm.refresh_from_db()
+        self.assertEqual(realm.max_invites, settings.INVITES_DEFAULT_REALM_DAILY_MAX)
+
+        result = self.client_post(
+            "/activity/support", {"realm_id": f"{realm.id}", "max_invites": "700"}
+        )
+        self.assert_in_success_response(
+            ["Maximum number of daily invitations for zulip updated to 700."], result
+        )
+        realm.refresh_from_db()
+        self.assertEqual(realm.max_invites, 700)
+
+        result = self.client_post(
+            "/activity/support", {"realm_id": f"{realm.id}", "max_invites": "0"}
+        )
+        self.assert_in_success_response(
+            [
+                "Maximum number of daily invitations for zulip updated to the default for the current plan type."
+            ],
+            result,
+        )
+        realm.refresh_from_db()
+        self.assertEqual(realm.max_invites, settings.INVITES_DEFAULT_REALM_DAILY_MAX)
+
+        result = self.client_post(
+            "/activity/support", {"realm_id": f"{realm.id}", "max_invites": "0"}
+        )
+        self.assert_in_success_response(
+            [
+                "Cannot update maximum number of daily invitations for zulip, because the default for the current plan type is already set."
+            ],
+            result,
+        )
 
     def test_attach_discount(self) -> None:
         lear_realm = get_realm("lear")
@@ -1404,6 +1511,29 @@ class TestSupportEndpoint(ZulipTestCase):
             "request for sponsored hosting has been approved", messages[0].message.content
         )
         self.assert_length(messages, 1)
+
+    def test_approve_sponsorship_deactivated_realm(self) -> None:
+        support_admin = self.example_user("iago")
+        with self.settings(BILLING_ENABLED=True):
+            limited_realm = do_create_realm("limited", "limited")
+            self.assertEqual(limited_realm.plan_type, Realm.PLAN_TYPE_LIMITED)
+            billing_session = RealmBillingSession(
+                user=support_admin, realm=limited_realm, support_session=True
+            )
+            billing_session.update_customer_sponsorship_status(True)
+        limited_realm.deactivated = True
+        limited_realm.save()
+
+        iago = self.example_user("iago")
+        self.login_user(iago)
+
+        result = self.client_post(
+            "/activity/support",
+            {"realm_id": f"{limited_realm.id}", "approve_sponsorship": "true"},
+        )
+        self.assertIn(b"Realm has been deactivated", result.content)
+        limited_realm.refresh_from_db()
+        self.assertEqual(limited_realm.plan_type, Realm.PLAN_TYPE_LIMITED)
 
     def test_activate_or_deactivate_realm(self) -> None:
         cordelia = self.example_user("cordelia")

@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 from unittest import mock
 
 from django.utils.timezone import now as timezone_now
@@ -209,6 +208,10 @@ class ActivityTest(ZulipTestCase):
             result = self.client_get(f"/user_activity/{iago.id}/")
             self.assertEqual(result.status_code, 200)
 
+        with self.assert_database_query_count(8):
+            result = self.client_get(f"/activity/plan_ledger/{plan.id}/")
+            self.assertEqual(result.status_code, 200)
+
     def test_get_remote_server_guest_and_non_guest_count(self) -> None:
         RemoteRealmAuditLog.objects.bulk_create([RemoteRealmAuditLog(**data) for data in data_list])
         server_id = 1
@@ -263,7 +266,7 @@ class ActivityTest(ZulipTestCase):
             )
 
         def add_audit_log_data(
-            server: RemoteZulipServer, remote_realm: Optional[RemoteRealm], realm_id: Optional[int]
+            server: RemoteZulipServer, remote_realm: RemoteRealm | None, realm_id: int | None
         ) -> None:
             extra_data = {
                 RemoteRealmAuditLog.ROLE_COUNT: {

@@ -155,6 +155,7 @@ function toggle_giphy_popover(target) {
     popover_menus.toggle_popover_menu(
         target,
         {
+            theme: "popover-menu",
             placement: "top",
             onCreate(instance) {
                 instance.setContent(ui_util.parse_html(render_giphy_picker()));
@@ -208,6 +209,7 @@ function toggle_giphy_popover(target) {
         },
         {
             show_as_overlay_on_mobile: true,
+            show_as_overlay_always: false,
         },
     );
 }

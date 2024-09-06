@@ -1,20 +1,6 @@
-import inspect
 import os
-from collections import abc
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    Union,
-    get_args,
-    get_origin,
-)
+from collections.abc import Callable, Mapping
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import yaml
@@ -23,7 +9,7 @@ from django.urls import URLPattern
 from django.utils import regex_helper
 from pydantic import TypeAdapter
 
-from zerver.lib.request import _REQ, arguments_map
+from zerver.lib.request import arguments_map
 from zerver.lib.rest import rest_dispatch
 from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.typed_endpoint import parse_view_func_signature
@@ -56,12 +42,11 @@ VARMAP = {
     "boolean": bool,
     "object": dict,
     "NoneType": type(None),
+    "number": float,
 }
 
 
-def schema_type(
-    schema: Dict[str, Any], defs: Mapping[str, Any] = {}
-) -> Union[type, Tuple[type, object]]:
+def schema_type(schema: dict[str, Any], defs: Mapping[str, Any] = {}) -> type | tuple[type, object]:
     if "oneOf" in schema:
         # Hack: Just use the type of the first value
         # Ideally, we'd turn this into a Union type.
@@ -87,7 +72,7 @@ class OpenAPIToolsTest(ZulipTestCase):
     """
 
     def test_get_openapi_fixture(self) -> None:
-        actual = get_openapi_fixture(TEST_ENDPOINT, TEST_METHOD, TEST_RESPONSE_BAD_REQ)
+        actual = get_openapi_fixture(TEST_ENDPOINT, TEST_METHOD, TEST_RESPONSE_BAD_REQ)[0]["value"]
         expected = {
             "code": "BAD_REQUEST",
             "msg": "You don't have permission to edit this message",
@@ -113,7 +98,7 @@ class OpenAPIToolsTest(ZulipTestCase):
         with self.assertRaisesRegex(
             SchemaError, r"Additional properties are not allowed \('foo' was unexpected\)"
         ):
-            bad_content: Dict[str, object] = {
+            bad_content: dict[str, object] = {
                 "msg": "",
                 "result": "success",
                 "foo": "bar",
@@ -149,7 +134,7 @@ class OpenAPIToolsTest(ZulipTestCase):
         )
 
         # Overwrite the exception list with a mocked one
-        test_dict: Dict[str, Any] = {}
+        test_dict: dict[str, Any] = {}
 
         # Check that validate_against_openapi_schema correctly
         # descends into 'deep' objects and arrays.  Test 1 should
@@ -217,7 +202,7 @@ class OpenAPIToolsTest(ZulipTestCase):
 
 class OpenAPIArgumentsTest(ZulipTestCase):
     # This will be filled during test_openapi_arguments:
-    checked_endpoints: Set[str] = set()
+    checked_endpoints: set[str] = set()
     pending_endpoints = {
         #### TODO: These endpoints are a priority to document:
         # These are a priority to document but don't match our normal URL schemes
@@ -229,8 +214,6 @@ class OpenAPIArgumentsTest(ZulipTestCase):
         ## And this one isn't, and isn't really representable
         # "/user_uploads/{realm_id_str}/{filename}",
         #### These realm administration settings are valuable to document:
-        # List data exports for organization (GET) or request one (POST)
-        "/export/realm",
         # Delete a data export.
         "/export/realm/{export_id}",
         # Manage default streams and default stream groups
@@ -288,10 +271,10 @@ class OpenAPIArgumentsTest(ZulipTestCase):
 
     # Endpoints where the documentation is currently failing our
     # consistency tests.  We aim to keep this list empty.
-    buggy_documentation_endpoints: Set[str] = set()
+    buggy_documentation_endpoints: set[str] = set()
 
     def ensure_no_documentation_if_intentionally_undocumented(
-        self, url_pattern: str, method: str, msg: Optional[str] = None
+        self, url_pattern: str, method: str, msg: str | None = None
     ) -> None:
         try:
             get_openapi_parameters(url_pattern, method)
@@ -323,49 +306,12 @@ so maybe we shouldn't mark it as intentionally undocumented in the URLs.
                 msg += f"\n + {undocumented_path}"
             raise AssertionError(msg)
 
-    def get_type_by_priority(
-        self, types: Sequence[Union[type, Tuple[type, object]]]
-    ) -> Union[type, Tuple[type, object]]:
-        priority = {list: 1, dict: 2, str: 3, int: 4, bool: 5}
-        tyiroirp = {1: list, 2: dict, 3: str, 4: int, 5: bool}
-        val = 6
-        for t in types:
-            if isinstance(t, tuple):
-                return t  # e.g. (list, dict) or (list, str)
-            v = priority.get(t, 6)
-            if v < val:
-                val = v
-        return tyiroirp.get(val, types[0])
-
-    def get_standardized_argument_type(self, t: Any) -> Union[type, Tuple[type, object]]:
-        """Given a type from the typing module such as List[str] or Union[str, int],
-        convert it into a corresponding Python type. Unions are mapped to a canonical
-        choice among the options.
-        E.g. typing.Union[typing.List[typing.Dict[str, typing.Any]], NoneType]
-        needs to be mapped to list."""
-
-        origin = get_origin(t)
-
-        if origin is None:
-            # Then it's most likely one of the fundamental data types
-            # I.E. Not one of the data types from the "typing" module.
-            return t
-        elif origin == Union:
-            subtypes = [self.get_standardized_argument_type(st) for st in get_args(t)]
-            return self.get_type_by_priority(subtypes)
-        elif origin in [list, abc.Sequence]:
-            [st] = get_args(t)
-            return (list, self.get_standardized_argument_type(st))
-        elif origin in [dict, abc.Mapping]:
-            return dict
-        raise AssertionError(f"Unknown origin {origin}")
-
     def render_openapi_type_exception(
         self,
         function: Callable[..., HttpResponse],
-        openapi_params: Set[Tuple[str, Union[type, Tuple[type, object]]]],
-        function_params: Set[Tuple[str, Union[type, Tuple[type, object]]]],
-        diff: Set[Tuple[str, Union[type, Tuple[type, object]]]],
+        openapi_params: set[tuple[str, type | tuple[type, object]]],
+        function_params: set[tuple[str, type | tuple[type, object]]],
+        diff: set[tuple[str, type | tuple[type, object]]],
     ) -> None:  # nocoverage
         """Print a *VERY* clear and verbose error message for when the types
         (between the OpenAPI documentation and the function declaration) don't match."""
@@ -394,7 +340,7 @@ do not match the types declared in the implementation of {function.__name__}.\n"
         raise AssertionError(msg)
 
     def validate_json_schema(
-        self, function: Callable[..., HttpResponse], openapi_parameters: List[Parameter]
+        self, function: Callable[..., HttpResponse], openapi_parameters: list[Parameter]
     ) -> None:
         """Validate against the Pydantic generated JSON schema against our OpenAPI definitions"""
         USE_JSON_CONTENT_TYPE_HINT = f"""
@@ -443,17 +389,25 @@ do not match the types declared in the implementation of {function.__name__}.\n"
             # matching that of our OpenAPI spec. If not so, hint that the
             # Json[T] wrapper might be missing from the type annotation.
             if actual_param.request_var_name in json_request_var_names:
-                self.assertEqual(
-                    actual_param_schema.get("contentMediaType"),
-                    "application/json",
-                    USE_JSON_CONTENT_TYPE_HINT.format(
-                        param_name=actual_param.param_name,
-                        param_type=actual_param.param_type,
-                    ),
-                )
-                # actual_param_schema is a json_schema. Reference:
-                # https://docs.pydantic.dev/latest/api/json_schema/#pydantic.json_schema.GenerateJsonSchema.json_schema
-                actual_param_schema = actual_param_schema["contentSchema"]
+                # skipping this check for send_message_backend 'to' parameter because it is a
+                # special case where the content type of the parameter is application/json but the
+                # parameter may or may not be JSON encoded since previously we also accepted a raw
+                # string and some ad-hoc bot might still depend on sending a raw string.
+                if (
+                    function.__name__ != "send_message_backend"
+                    or actual_param.param_name != "req_to"
+                ):
+                    self.assertEqual(
+                        actual_param_schema.get("contentMediaType"),
+                        "application/json",
+                        USE_JSON_CONTENT_TYPE_HINT.format(
+                            param_name=actual_param.param_name,
+                            param_type=actual_param.param_type,
+                        ),
+                    )
+                    # actual_param_schema is a json_schema. Reference:
+                    # https://docs.pydantic.dev/latest/api/json_schema/#pydantic.json_schema.GenerateJsonSchema.json_schema
+                    actual_param_schema = actual_param_schema["contentSchema"]
             elif "contentMediaType" in actual_param_schema:
                 function_schema_type = schema_type(actual_param_schema, defs_mapping)
                 # We do not specify that the content type of int or bool
@@ -474,15 +428,15 @@ do not match the types declared in the implementation of {function.__name__}.\n"
             self.render_openapi_type_exception(function, openapi_params, function_params, diff)
 
     def check_argument_types(
-        self, function: Callable[..., HttpResponse], openapi_parameters: List[Parameter]
+        self, function: Callable[..., HttpResponse], openapi_parameters: list[Parameter]
     ) -> None:
         """We construct for both the OpenAPI data and the function's definition a set of
         tuples of the form (var_name, type) and then compare those sets to see if the
         OpenAPI data defines a different type than that actually accepted by the function.
         Otherwise, we print out the exact differences for convenient debugging and raise an
         AssertionError."""
-        # Iterate through the decorators to find the original function, wrapped
-        # by has_request_variables/typed_endpoint, so we can parse its
+        # Iterate through the decorators to find the original
+        # function, wrapped by typed_endpoint, so we can parse its
         # arguments.
         use_endpoint_decorator = False
         while (wrapped := getattr(function, "__wrapped__", None)) is not None:
@@ -492,68 +446,9 @@ do not match the types declared in the implementation of {function.__name__}.\n"
                 use_endpoint_decorator = True
             function = wrapped
 
-        if use_endpoint_decorator:
+        if len(openapi_parameters) > 0:
+            assert use_endpoint_decorator
             return self.validate_json_schema(function, openapi_parameters)
-
-        openapi_params: Set[Tuple[str, Union[type, Tuple[type, object]]]] = set()
-        json_params: Dict[str, Union[type, Tuple[type, object]]] = {}
-        for openapi_parameter in openapi_parameters:
-            name = openapi_parameter.name
-            if openapi_parameter.json_encoded:
-                # If content_type is application/json, then the
-                # parameter needs to be handled specially, as REQ can
-                # either return the application/json as a string or it
-                # can either decode it and return the required
-                # elements. For example `to` array in /messages: POST
-                # is processed by REQ as a string and then its type is
-                # checked in the view code.
-                #
-                # Meanwhile `profile_data` in /users/{user_id}: GET is
-                # taken as array of objects. So treat them separately.
-                json_params[name] = schema_type(openapi_parameter.value_schema)
-                continue
-            openapi_params.add((name, schema_type(openapi_parameter.value_schema)))
-
-        function_params: Set[Tuple[str, Union[type, Tuple[type, object]]]] = set()
-
-        for pname, defval in inspect.signature(function).parameters.items():
-            defval = defval.default
-            if isinstance(defval, _REQ):
-                # TODO: The below inference logic in cases where
-                # there's a converter function declared is incorrect.
-                # Theoretically, we could restructure the converter
-                # function model so that we can check what type it
-                # excepts to be passed to make validation here
-                # possible.
-
-                vtype = self.get_standardized_argument_type(function.__annotations__[pname])
-                vname = defval.post_var_name
-                assert vname is not None
-                if vname in json_params:
-                    # Here we have two cases.  If the REQ type is
-                    # string then there is no point in comparing as
-                    # JSON can always be returned as string.  Ideally,
-                    # we wouldn't use REQ for a JSON object without a
-                    # validator in these cases, but it does happen.
-                    #
-                    # If the REQ type is not string then, insert the
-                    # REQ and OpenAPI data types of the variable in
-                    # the respective sets so that they can be dealt
-                    # with later.  In either case remove the variable
-                    # from `json_params`.
-                    if vtype is str:
-                        json_params.pop(vname, None)
-                        continue
-                    else:
-                        openapi_params.add((vname, json_params[vname]))
-                        json_params.pop(vname, None)
-                function_params.add((vname, vtype))
-
-        # After the above operations `json_params` should be empty.
-        assert len(json_params) == 0
-        diff = openapi_params - function_params
-        if diff:  # nocoverage
-            self.render_openapi_type_exception(function, openapi_params, function_params, diff)
 
     def check_openapi_arguments_for_view(
         self,
@@ -561,7 +456,7 @@ do not match the types declared in the implementation of {function.__name__}.\n"
         function_name: str,
         function: Callable[..., HttpResponse],
         method: str,
-        tags: Set[str],
+        tags: set[str],
     ) -> None:
         # Our accounting logic in the `has_request_variables()`
         # code means we have the list of all arguments
@@ -664,7 +559,7 @@ so maybe we shouldn't include it in pending_endpoints.
         # for those using the rest_dispatch decorator; we then parse
         # its mapping of (HTTP_METHOD -> FUNCTION).
         for p in urlconf.v1_api_and_json_patterns + urlconf.v1_api_mobile_patterns:
-            methods_endpoints: Dict[str, Any] = {}
+            methods_endpoints: dict[str, Any] = {}
             if p.callback is not rest_dispatch:
                 # Endpoints not using rest_dispatch don't have extra data.
                 if str(p.pattern) in self.documented_post_only_endpoints:
@@ -679,7 +574,7 @@ so maybe we shouldn't include it in pending_endpoints.
             for method, value in methods_endpoints.items():
                 if callable(value):
                     function: Callable[..., HttpResponse] = value
-                    tags: Set[str] = set()
+                    tags: set[str] = set()
                 else:
                     function, tags = value
 
@@ -733,7 +628,7 @@ class TestCurlExampleGeneration(ZulipTestCase):
         },
     }
 
-    spec_mock_with_invalid_method: Dict[str, object] = {
+    spec_mock_with_invalid_method: dict[str, object] = {
         "security": [{"basicAuth": []}],
         "paths": {
             "/endpoint": {
@@ -850,7 +745,7 @@ class TestCurlExampleGeneration(ZulipTestCase):
         },
     }
 
-    def curl_example(self, endpoint: str, method: str, *args: Any, **kwargs: Any) -> List[str]:
+    def curl_example(self, endpoint: str, method: str, *args: Any, **kwargs: Any) -> list[str]:
         return generate_curl_example(endpoint, method, "http://localhost:9991/api", *args, **kwargs)
 
     def test_generate_and_render_curl_example(self) -> None:
@@ -1051,9 +946,17 @@ class OpenAPIAttributesTest(ZulipTestCase):
                             )
                         continue
                     validate_schema(schema)
-                    assert validate_against_openapi_schema(
-                        schema["example"], path, method, status_code
-                    )
+                    if "example" not in schema:
+                        assert "examples" in response["content"]["application/json"]
+                        examples = response["content"]["application/json"]["examples"]
+                        for example in examples:
+                            assert validate_against_openapi_schema(
+                                examples[example]["value"], path, method, status_code
+                            )
+                    else:
+                        assert validate_against_openapi_schema(
+                            schema["example"], path, method, status_code
+                        )
 
 
 class OpenAPIRegexTest(ZulipTestCase):
@@ -1101,3 +1004,38 @@ class OpenAPIRequestValidatorTest(ZulipTestCase):
         validate_request(
             "/dev_fetch_api_key", "post", {}, {}, False, "200", intentionally_undocumented=True
         )
+
+
+class APIDocsSidebarTest(ZulipTestCase):
+    def test_link_in_sidebar(self) -> None:
+        """
+        Test to make sure that links of API documentation pages exist
+        in the sidebar and have the same label as the summary of the endpoint.
+        """
+        # These endpoints are in zulip.yaml, but not the actual docs.
+        exempted_docs = {
+            # (No /api/v1/ or /json prefix).
+            "get-file-temporary-url",
+            # This one is not used by any clients and is likely to get
+            # deprecated.
+            "update-subscriptions",
+            # This is rendered on the "Outgoing webhooks" page and hence is not
+            # linked in the sidebar.
+            "zulip-outgoing-webhooks",
+        }
+        sidebar_path = "api_docs/sidebar_index.md"
+        rest_endpoints_path = "api_docs/include/rest-endpoints.md"
+        with open(sidebar_path) as fp:
+            sidebar_content = fp.readlines()
+        with open(rest_endpoints_path) as fp:
+            sidebar_content += fp.readlines()
+
+        sidebar_content_set = set(sidebar_content)
+        paths = openapi_spec.openapi()["paths"]
+        for endpoint in paths:
+            for method in paths[endpoint]:
+                operationId = paths[endpoint][method].get("operationId")
+                summary = paths[endpoint][method].get("summary")
+                if operationId and operationId not in exempted_docs:
+                    link = f"* [{summary}](/api/{operationId})\n"
+                    assert link in sidebar_content_set

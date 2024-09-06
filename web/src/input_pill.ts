@@ -5,97 +5,97 @@ import assert from "minimalistic-assert";
 
 import render_input_pill from "../templates/input_pill.hbs";
 
-import * as blueslip from "./blueslip";
-import type {EmojiRenderingDetails} from "./emoji";
 import * as keydown_util from "./keydown_util";
 import * as ui_util from "./ui_util";
+import * as util from "./util";
 
 // See https://zulip.readthedocs.io/en/latest/subsystems/input-pills.html
 
-export type InputPillItem<T> = {
-    display_value: string;
-    type: string;
-    img_src?: string;
-    deactivated?: boolean;
-    status_emoji_info?: (EmojiRenderingDetails & {emoji_alt_code?: boolean}) | undefined; // TODO: Move this in user_status.js
-    should_add_guest_user_indicator?: boolean;
-    user_id?: number;
-    group_id?: number;
-} & T;
-
 export type InputPillConfig = {
-    show_user_status_emoji?: boolean;
     exclude_inaccessible_users?: boolean;
 };
 
-type InputPillCreateOptions<T> = {
+type InputPillCreateOptions<ItemType> = {
     $container: JQuery;
     pill_config?: InputPillConfig | undefined;
+    split_text_on_comma?: boolean;
+    convert_to_pill_on_enter?: boolean;
     create_item_from_text: (
         text: string,
-        existing_items: InputPillItem<T>[],
+        existing_items: ItemType[],
         pill_config?: InputPillConfig | undefined,
-    ) => InputPillItem<T> | undefined;
-    get_text_from_item: (item: InputPillItem<T>) => string;
+    ) => ItemType | undefined;
+    get_text_from_item: (item: ItemType) => string;
+    get_display_value_from_item: (item: ItemType) => string;
+    generate_pill_html?: (item: ItemType) => string;
+    on_pill_exit?: (
+        clicked_pill: HTMLElement,
+        all_pills: InputPill<ItemType>[],
+        remove_pill: (pill: HTMLElement) => void,
+    ) => void;
 };
 
-type InputPill<T> = {
-    item: InputPillItem<T>;
+export type InputPill<ItemType> = {
+    item: ItemType;
     $element: JQuery;
 };
 
-type InputPillStore<T> = {
+type InputPillStore<ItemType> = {
     onTextInputHook?: () => void;
-    pills: InputPill<T>[];
-    pill_config: InputPillCreateOptions<T>["pill_config"];
+    pills: InputPill<ItemType>[];
+    pill_config: InputPillCreateOptions<ItemType>["pill_config"];
     $parent: JQuery;
     $input: JQuery;
-    create_item_from_text: InputPillCreateOptions<T>["create_item_from_text"];
-    get_text_from_item: InputPillCreateOptions<T>["get_text_from_item"];
+    create_item_from_text: InputPillCreateOptions<ItemType>["create_item_from_text"];
+    get_text_from_item: InputPillCreateOptions<ItemType>["get_text_from_item"];
+    get_display_value_from_item: InputPillCreateOptions<ItemType>["get_display_value_from_item"];
+    generate_pill_html: InputPillCreateOptions<ItemType>["generate_pill_html"];
+    on_pill_exit: InputPillCreateOptions<ItemType>["on_pill_exit"];
     onPillCreate?: () => void;
-    onPillRemove?: (pill: InputPill<T>) => void;
+    onPillRemove?: (pill: InputPill<ItemType>, trigger: RemovePillTrigger) => void;
     createPillonPaste?: () => void;
-};
-
-type InputPillRenderingDetails = {
-    display_value: string;
-    has_image: boolean;
-    img_src?: string | undefined;
-    deactivated: boolean | undefined;
-    has_status?: boolean;
-    status_emoji_info?: (EmojiRenderingDetails & {emoji_alt_code?: boolean}) | undefined;
-    should_add_guest_user_indicator: boolean | undefined;
-    user_id?: number | undefined;
-    group_id?: number | undefined;
+    split_text_on_comma: boolean;
+    convert_to_pill_on_enter: boolean;
 };
 
 // These are the functions that are exposed to other modules.
-export type InputPillContainer<T> = {
+export type InputPillContainer<ItemType> = {
     appendValue: (text: string) => void;
-    appendValidatedData: (item: InputPillItem<T>) => void;
-    getByElement: (element: HTMLElement) => InputPill<T> | undefined;
-    items: () => InputPillItem<T>[];
+    appendValidatedData: (item: ItemType) => void;
+    getByElement: (element: HTMLElement) => InputPill<ItemType> | undefined;
+    items: () => ItemType[];
     onPillCreate: (callback: () => void) => void;
-    onPillRemove: (callback: (pill: InputPill<T>) => void) => void;
+    onPillRemove: (
+        callback: (pill: InputPill<ItemType>, trigger: RemovePillTrigger) => void,
+    ) => void;
     onTextInputHook: (callback: () => void) => void;
     createPillonPaste: (callback: () => void) => void;
-    clear: () => void;
+    clear: (quiet?: boolean) => void;
     clear_text: () => void;
     getCurrentText: () => string | null;
     is_pending: () => boolean;
-    _get_pills_for_testing: () => InputPill<T>[];
+    _get_pills_for_testing: () => InputPill<ItemType>[];
 };
 
-export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T> {
+export type RemovePillTrigger = "close" | "backspace" | "clear";
+
+export function create<ItemType extends {type: string}>(
+    opts: InputPillCreateOptions<ItemType>,
+): InputPillContainer<ItemType> {
     // a stateful object of this `pill_container` instance.
     // all unique instance information is stored in here.
-    const store: InputPillStore<T> = {
+    const store: InputPillStore<ItemType> = {
         pills: [],
         pill_config: opts.pill_config,
         $parent: opts.$container,
         $input: opts.$container.find(".input").expectOne(),
         create_item_from_text: opts.create_item_from_text,
         get_text_from_item: opts.get_text_from_item,
+        get_display_value_from_item: opts.get_display_value_from_item,
+        split_text_on_comma: opts.split_text_on_comma ?? true,
+        convert_to_pill_on_enter: opts.convert_to_pill_on_enter ?? true,
+        generate_pill_html: opts.generate_pill_html,
+        on_pill_exit: opts.on_pill_exit,
     };
 
     // a dictionary of internal functions. Some of these are exposed as well,
@@ -132,7 +132,7 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
             const existing_items = funcs.items();
             const item = store.create_item_from_text(text, existing_items, store.pill_config);
 
-            if (!item?.display_value) {
+            if (!item) {
                 store.$input.addClass("shake");
                 return undefined;
             }
@@ -142,47 +142,16 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
 
         // This is generally called by typeahead logic, where we have all
         // the data we need (as opposed to, say, just a user-typed email).
-        appendValidatedData(item: InputPillItem<T>) {
-            if (!item.display_value) {
-                blueslip.error("no display_value returned");
-                return;
+        appendValidatedData(item: ItemType) {
+            let pill_html;
+            if (store.generate_pill_html !== undefined) {
+                pill_html = store.generate_pill_html(item);
+            } else {
+                pill_html = render_input_pill({
+                    display_value: store.get_display_value_from_item(item),
+                });
             }
-
-            if (!item.type) {
-                blueslip.error("no type defined for the item");
-                return;
-            }
-
-            const has_image = item.img_src !== undefined;
-
-            const opts: InputPillRenderingDetails = {
-                display_value: item.display_value,
-                has_image,
-                deactivated: item.deactivated,
-                should_add_guest_user_indicator: item.should_add_guest_user_indicator,
-            };
-
-            if (item.user_id) {
-                opts.user_id = item.user_id;
-            }
-            if (item.group_id) {
-                opts.group_id = item.group_id;
-            }
-
-            if (has_image) {
-                opts.img_src = item.img_src;
-            }
-
-            if (store.pill_config?.show_user_status_emoji === true) {
-                const has_status = item.status_emoji_info !== undefined;
-                if (has_status) {
-                    opts.status_emoji_info = item.status_emoji_info;
-                }
-                opts.has_status = has_status;
-            }
-
-            const pill_html = render_input_pill(opts);
-            const payload: InputPill<T> = {
+            const payload: InputPill<ItemType> = {
                 item,
                 $element: $(pill_html),
             };
@@ -201,7 +170,7 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
             if (value.length === 0) {
                 return true;
             }
-            if (value.match(",")) {
+            if (store.split_text_on_comma && value.includes(",")) {
                 funcs.insertManyPills(value);
                 return false;
             }
@@ -221,14 +190,14 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
         // from the DOM, removes it from the array and returns it.
         // this would generally be used for DOM-provoked actions, such as a user
         // clicking on a pill to remove it.
-        removePill(element: HTMLElement) {
+        removePill(element: HTMLElement, trigger: RemovePillTrigger) {
             const idx = store.pills.findIndex((pill) => pill.$element[0] === element);
 
             if (idx !== -1) {
                 store.pills[idx]!.$element.remove();
-                const pill = store.pills.splice(idx, 1);
+                const pill = util.the(store.pills.splice(idx, 1));
                 if (store.onPillRemove !== undefined) {
-                    store.onPillRemove(pill[0]!);
+                    store.onPillRemove(pill, trigger);
                 }
 
                 // This is needed to run the "change" event handler registered in
@@ -248,23 +217,22 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
         // If quiet is a truthy value, the event handler associated with the
         // pill will not be evaluated. This is useful when using clear to reset
         // the pills.
-        removeLastPill(quiet?: boolean) {
+        removeLastPill(trigger: RemovePillTrigger, quiet?: boolean) {
             const pill = store.pills.pop();
 
             if (pill) {
                 pill.$element.remove();
                 if (!quiet && store.onPillRemove !== undefined) {
-                    store.onPillRemove(pill);
+                    store.onPillRemove(pill, trigger);
                 }
             }
         },
 
-        removeAllPills(quiet?: boolean) {
+        removeAllPills(trigger: RemovePillTrigger, quiet?: boolean) {
             while (store.pills.length > 0) {
-                this.removeLastPill(quiet);
+                this.removeLastPill(trigger, quiet);
             }
-
-            this.clear(store.$input[0]!);
+            this.clear(util.the(store.$input));
         },
 
         insertManyPills(pills: string | string[]) {
@@ -285,7 +253,7 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
             // when using the `text` insertion feature with jQuery the caret is
             // placed at the beginning of the input field, so this moves it to
             // the end.
-            ui_util.place_caret_at_end(store.$input[0]!);
+            ui_util.place_caret_at_end(util.the(store.$input));
 
             // this sends a flag if the operation wasn't completely successful,
             // which in this case is defined as some of the pills not autofilling
@@ -316,7 +284,10 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
 
     {
         store.$parent.on("keydown", ".input", function (this: HTMLElement, e) {
-            if (keydown_util.is_enter_event(e)) {
+            // `convert_to_pill_on_enter = false` allows some pill containers,
+            // which don't convert all of their text input to pills, to have
+            // their own custom handlers of enter events.
+            if (keydown_util.is_enter_event(e) && store.convert_to_pill_on_enter) {
                 // regardless of the value of the input, the ENTER keyword
                 // should be ignored in favor of keeping content to one line
                 // always.
@@ -351,7 +322,7 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
                     (selection?.anchorOffset === 0 && selection?.toString()?.length === 0))
             ) {
                 e.preventDefault();
-                funcs.removeLastPill();
+                funcs.removeLastPill("backspace");
 
                 return;
             }
@@ -370,7 +341,7 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
                 // if the pill is successful, it will create the pill and clear
                 // the input.
                 if (funcs.appendPill(store.$input.text().trim())) {
-                    funcs.clear(store.$input[0]!);
+                    funcs.clear(util.the(store.$input));
                 }
                 e.preventDefault();
 
@@ -399,7 +370,7 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
                     break;
                 case "Backspace": {
                     const $next = $pill.next();
-                    funcs.removePill($pill[0]!);
+                    funcs.removePill(util.the($pill), "backspace");
                     $next.trigger("focus");
                     // the "Backspace" key in Firefox will go back a page if you do
                     // not prevent it.
@@ -433,14 +404,25 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
         });
 
         // when the "×" is clicked on a pill, it should delete that pill and then
-        // select the next pill (or input).
+        // select the input field.
         store.$parent.on("click", ".exit", function (this: HTMLElement, e) {
-            e.stopPropagation();
-            const $pill = $(this).closest(".pill");
-            const $next = $pill.next();
-
-            funcs.removePill($pill[0]!);
-            $next.trigger("focus");
+            if (store.on_pill_exit) {
+                store.on_pill_exit(this, store.pills, (pill: HTMLElement): void => {
+                    funcs.removePill(pill, "close");
+                });
+                // This is needed to run the "change" event handler registered in
+                // compose_recipient.js, which calls the `update_on_recipient_change` to update
+                // the compose_fade state.
+                store.$input.trigger("change");
+            } else {
+                e.stopPropagation();
+                const pill = util.the($(this).closest(".pill"));
+                funcs.removePill(pill, "close");
+            }
+            // Since removing a pill moves the $input, typeahead needs to refresh
+            // to appear at the correct position.
+            store.$input.trigger(new $.Event("typeahead.refreshPosition"));
+            store.$input.trigger("focus");
         });
 
         store.$parent.on("click", function (e) {
@@ -458,7 +440,7 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
     }
 
     // the external, user-accessible prototype.
-    const prototype: InputPillContainer<T> = {
+    const prototype: InputPillContainer<ItemType> = {
         appendValue: funcs.appendPill.bind(funcs),
         appendValidatedData: funcs.appendValidatedData.bind(funcs),
 
@@ -482,7 +464,9 @@ export function create<T>(opts: InputPillCreateOptions<T>): InputPillContainer<T
             store.createPillonPaste = callback;
         },
 
-        clear: funcs.removeAllPills.bind(funcs),
+        clear(quiet?: boolean) {
+            funcs.removeAllPills.bind(funcs)("clear", quiet);
+        },
         clear_text: funcs.clear_text.bind(funcs),
         is_pending: funcs.is_pending.bind(funcs),
         _get_pills_for_testing: funcs._get_pills_for_testing.bind(funcs),

@@ -12,6 +12,7 @@ import * as browser_history from "./browser_history";
 import {buddy_list} from "./buddy_list";
 import * as compose_call from "./compose_call";
 import * as compose_call_ui from "./compose_call_ui";
+import * as compose_closed_ui from "./compose_closed_ui";
 import * as compose_pm_pill from "./compose_pm_pill";
 import * as compose_recipient from "./compose_recipient";
 import * as compose_state from "./compose_state";
@@ -200,11 +201,11 @@ export function dispatch_normal_event(event) {
                 allow_edit_history: noop,
                 allow_message_editing: noop,
                 edit_topic_policy: noop,
-                user_group_edit_policy: noop,
+                user_group_edit_policy: user_group_edit.update_group_management_ui,
                 avatar_changes_disabled: settings_account.update_avatar_change_display,
                 bot_creation_policy: settings_bots.update_bot_permissions_ui,
+                can_delete_any_message_group: noop,
                 create_multiuse_invite_group: noop,
-                create_web_public_stream_policy: noop,
                 invite_to_stream_policy: noop,
                 default_code_block_language: noop,
                 default_language: noop,
@@ -212,6 +213,8 @@ export function dispatch_normal_event(event) {
                 description: noop,
                 digest_emails_enabled: noop,
                 digest_weekday: noop,
+                direct_message_initiator_group: noop,
+                direct_message_permission_group: noop,
                 email_changes_disabled: settings_account.update_email_change_display,
                 disallow_disposable_email_addresses: noop,
                 inline_image_preview: noop,
@@ -229,7 +232,6 @@ export function dispatch_normal_event(event) {
                 name_changes_disabled: settings_account.update_name_change_display,
                 new_stream_announcements_stream_id: stream_ui_updates.update_announce_stream_option,
                 org_type: noop,
-                private_message_policy: compose_recipient.check_posting_policy_for_compose_box,
                 push_notifications_enabled: noop,
                 require_unique_names: noop,
                 send_welcome_emails: noop,
@@ -264,12 +266,9 @@ export function dispatch_normal_event(event) {
                             gear_menu.rerender();
                         }
 
-                        if (
-                            event.property === "create_web_public_stream_policy" ||
-                            event.property === "enable_spectator_access"
-                        ) {
+                        if (event.property === "enable_spectator_access") {
                             stream_settings_ui.update_stream_privacy_choices(
-                                "create_web_public_stream_policy",
+                                "can_create_web_public_channel_group",
                             );
                         }
                     }
@@ -291,9 +290,21 @@ export function dispatch_normal_event(event) {
 
                                 if (
                                     key === "can_create_public_channel_group" ||
-                                    key === "can_create_private_channel_group"
+                                    key === "can_create_private_channel_group" ||
+                                    key === "can_create_web_public_channel_group"
                                 ) {
                                     stream_settings_ui.update_stream_privacy_choices(key);
+                                }
+
+                                if (
+                                    key === "direct_message_initiator_group" ||
+                                    key === "direct_message_permission_group"
+                                ) {
+                                    settings_org.check_disable_direct_message_initiator_group_dropdown(
+                                        realm.realm_direct_message_permission_group,
+                                    );
+                                    compose_closed_ui.update_buttons_for_private();
+                                    compose_recipient.check_posting_policy_for_compose_box();
                                 }
 
                                 if (key === "edit_topic_policy") {
@@ -553,10 +564,6 @@ export function dispatch_normal_event(event) {
                         const is_narrowed_to_stream = narrow_state.is_for_stream_id(
                             stream.stream_id,
                         );
-                        if (is_narrowed_to_stream) {
-                            assert(message_lists.current !== undefined);
-                            message_lists.current.update_trailing_bookend();
-                        }
                         stream_data.delete_sub(stream.stream_id);
                         stream_settings_ui.remove_stream(stream.stream_id);
                         if (was_subscribed) {
@@ -581,6 +588,10 @@ export function dispatch_normal_event(event) {
                             settings_org.sync_realm_settings(
                                 "zulip_update_announcements_stream_id",
                             );
+                        }
+                        if (is_narrowed_to_stream) {
+                            assert(message_lists.current !== undefined);
+                            message_lists.current.update_trailing_bookend(true);
                         }
                     }
                     stream_list.update_subscribe_to_more_streams_link();
@@ -695,7 +706,7 @@ export function dispatch_normal_event(event) {
                 break;
             }
 
-            const user_display_settings = [
+            const user_preferences = [
                 "color_scheme",
                 "web_font_size_px",
                 "web_line_height_percent",
@@ -704,6 +715,7 @@ export function dispatch_normal_event(event) {
                 "demote_inactive_streams",
                 "dense_mode",
                 "web_mark_read_on_scroll_policy",
+                "web_channel_default_view",
                 "emojiset",
                 "web_escape_navigates_to_home_view",
                 "fluid_layout_width",
@@ -714,15 +726,17 @@ export function dispatch_normal_event(event) {
                 "translate_emoticons",
                 "display_emoji_reaction_users",
                 "user_list_style",
+                "web_animate_image_previews",
                 "web_stream_unreads_count_display_policy",
                 "starred_message_counts",
                 "send_stream_typing_notifications",
                 "send_private_typing_notifications",
                 "send_read_receipts",
+                "web_navigate_to_sent_message",
             ];
 
             const original_home_view = user_settings.web_home_view;
-            if (user_display_settings.includes(event.property)) {
+            if (user_preferences.includes(event.property)) {
                 user_settings[event.property] = event.value;
             }
             if (event.property === "default_language") {
@@ -763,6 +777,12 @@ export function dispatch_normal_event(event) {
             if (event.property === "demote_inactive_streams") {
                 stream_list.update_streams_sidebar();
                 stream_list_sort.set_filter_out_inactives();
+            }
+            if (event.property === "web_animate_image_previews") {
+                // Rerender the whole message list UI
+                for (const msg_list of message_lists.all_rendered_message_lists()) {
+                    msg_list.rerender();
+                }
             }
             if (event.property === "web_stream_unreads_count_display_policy") {
                 stream_list.update_dom_unread_counts_visibility();
@@ -910,7 +930,7 @@ export function dispatch_normal_event(event) {
                     break;
                 case "update":
                     user_groups.update(event);
-                    user_group_edit.update_group(event.group_id);
+                    user_group_edit.update_group(event);
                     break;
                 default:
                     blueslip.error("Unexpected event type user_group/" + event.op);

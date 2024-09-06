@@ -40,6 +40,7 @@ import * as navigate from "./navigate";
 import * as overlays from "./overlays";
 import {page_params} from "./page_params";
 import * as playground_links_popover from "./playground_links_popover";
+import * as pm_list from "./pm_list";
 import * as popover_menus from "./popover_menus";
 import * as popovers from "./popovers";
 import * as reactions from "./reactions";
@@ -149,7 +150,7 @@ const keydown_either_mappings = {
 };
 
 const keypress_mappings = {
-    42: {name: "star_deprecated", message_view_only: true}, // '*'
+    42: {name: "open_starred_message_view", message_view_only: true}, // '*'
     43: {name: "thumbs_up_emoji", message_view_only: true}, // '+'
     61: {name: "upvote_first_emoji", message_view_only: true}, // '='
     45: {name: "toggle_message_collapse", message_view_only: true}, // '-'
@@ -290,11 +291,6 @@ export function process_escape_key(e) {
     }
 
     if (popovers.any_active()) {
-        if (user_card_popover.manage_menu.is_open()) {
-            user_card_popover.manage_menu.hide();
-            $("#user_card_popover .user-card-popover-manage-menu-btn").trigger("focus");
-            return true;
-        }
         popovers.hide_all();
         return true;
     }
@@ -338,6 +334,11 @@ export function process_escape_key(e) {
         // will zoom out, handled below.
         if (stream_list.is_zoomed_in() && $("#filter-topic-input").is(":focus")) {
             topic_list.clear_topic_search(e);
+            return true;
+        }
+
+        if (pm_list.is_zoomed_in() && $(".direct-messages-list-filter").is(":focus")) {
+            pm_list.clear_search();
             return true;
         }
 
@@ -400,11 +401,6 @@ function handle_popover_events(event_name) {
             popover_menu_visible_instance,
             event_name,
         );
-        return true;
-    }
-
-    if (user_card_popover.manage_menu.is_open()) {
-        user_card_popover.manage_menu.handle_keyboard(event_name);
         return true;
     }
 
@@ -802,13 +798,29 @@ export function process_hotkey(e, hotkey) {
         return true;
     }
 
-    if (event_name === "toggle_compose_preview" && compose_state.composing()) {
-        if ($("#compose .markdown_preview").is(":visible")) {
-            compose.show_preview_area();
-        } else {
-            compose.clear_preview_area();
+    if (event_name === "toggle_compose_preview") {
+        const $last_focused_compose_type_input = $(
+            compose_state.get_last_focused_compose_type_input(),
+        );
+
+        if ($last_focused_compose_type_input.hasClass("message_edit_content")) {
+            if ($last_focused_compose_type_input.closest(".preview_mode").length) {
+                message_edit.clear_preview_area($last_focused_compose_type_input);
+                $last_focused_compose_type_input.trigger("focus");
+            } else {
+                message_edit.show_preview_area($last_focused_compose_type_input);
+            }
+            return true;
         }
-        return true;
+
+        if (compose_state.composing()) {
+            if ($("#compose .markdown_preview").is(":visible")) {
+                compose.show_preview_area();
+            } else {
+                compose.clear_preview_area();
+            }
+            return true;
+        }
     }
 
     if (menu_dropdown_hotkeys.has(event_name) && handle_popover_events(event_name)) {
@@ -844,6 +856,18 @@ export function process_hotkey(e, hotkey) {
         if (event_name === "left_arrow" && compose_state.focus_in_empty_compose()) {
             message_edit.edit_last_sent_message();
             return true;
+        }
+
+        if (event_name === "down_arrow" && $(":focus").attr("id") === "search_query") {
+            $("#search_query").trigger("blur");
+            message_scroll_state.set_keyboard_triggered_current_scroll(true);
+            navigate.down(true);
+        }
+
+        if (event_name === "up_arrow" && $(":focus").attr("id") === "search_query") {
+            $("#search_query").trigger("blur");
+            message_scroll_state.set_keyboard_triggered_current_scroll(true);
+            navigate.up(true);
         }
 
         if (
@@ -972,6 +996,9 @@ export function process_hotkey(e, hotkey) {
         case "open_inbox":
             browser_history.go_to_location("#inbox");
             return true;
+        case "open_starred_message_view":
+            browser_history.go_to_location("#narrow/is/starred");
+            return true;
         case "open_combined_feed":
             browser_history.go_to_location("#feed");
             return true;
@@ -1019,9 +1046,6 @@ export function process_hotkey(e, hotkey) {
             return true;
         case "C_deprecated":
             deprecated_feature_notice.maybe_show_deprecation_notice("Shift + C");
-            return true;
-        case "star_deprecated":
-            deprecated_feature_notice.maybe_show_deprecation_notice("*");
             return true;
     }
 

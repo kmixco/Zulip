@@ -19,7 +19,7 @@ and a handful of longer guides. The feature articles serve a few different purpo
   organization settings.
 
 Zulip help center documentation is available under `/help/` on any Zulip server;
-(e.g. <https://zulip.com/help/> or `http://localhost:9991/help/` in
+(e.g., <https://zulip.com/help/> or `http://localhost:9991/help/` in
 the Zulip development environment). The help center documentation is not hosted
 on ReadTheDocs, since Zulip supports running a server completely disconnected
 from the Internet, and we'd like the documentation to be available in that
@@ -55,7 +55,7 @@ There are over 100 feature articles and longer guides in the
 the current documentation as a resource and guide as you begin.
 
 - Use the list on [Zulip help center home](https://zulip.com/help/)
-  to find the section of the docs (e.g. Preferences, Sending
+  to find the section of the docs (e.g., Preferences, Sending
   messages, Reading messages, etc.) that relates to the new feature
   you're documenting.
 
@@ -103,7 +103,7 @@ existing help center articles:
   would be appropriate in the description of the feature. For example,
   your new feature might relate to general Zulip features like
   [keyboard shortcuts](https://zulip.com/help/keyboard-shortcuts)
-  or [channels and topics](https://zulip.com/help/streams-and-topics).
+  or [topics](https://zulip.com/help/introduction-to-topics).
 
 - Make sure there is a **Related articles** section at the end
   of the article that again links to any help center documentation
@@ -144,7 +144,7 @@ updating existing documentation:
 An anti-pattern is trying to make up for bad UX by adding help center
 documentation. It's worth remembering that for most articles, almost 100% of
 the users of the feature will never read the article. Instructions for
-filling out forms, interacting with UI widgets (e.g. typeaheads), interacting
+filling out forms, interacting with UI widgets (e.g., typeaheads), interacting
 with modals, etc. should never go in the help center documentation.
 In such cases, you may be able to fix the problem by adding text in-app,
 where the user will see it as they are interacting with the feature.
@@ -184,6 +184,13 @@ to the `API_DOCUMENTATION_REDIRECTS` list in `url_redirects.py`.
 
 You should still check for references to the old URL in your branch
 and replace those with the new URL (e.g., `git grep "/help/foo"`).
+One exception to this are links with the old URL that were included
+in the content of `zulip_update_announcements`, which can be found
+in `zerver/lib/zulip_update_announcements.py`. It's preferable to
+have the source code accurately reflect what was sent to users in
+those [Zulip update announcements][help-zulip-updates], so these
+should not be replaced with the new URL.
+
 Updating section headers in existing help center articles does not
 require adding a URL redirect, but you will need to update any
 existing links to that article's section in your branch.
@@ -200,6 +207,8 @@ checks all the URL redirects, which you can run from the command line:
 ./tools/test-backend zerver.tests.test_urls.URLRedirectTest
 ```
 
+[help-zulip-updates]: https://zulip.com/help/configure-automated-notices#zulip-update-announcements
+
 ## Writing style
 
 Below are some general style and writing conventions that should be used
@@ -208,7 +217,7 @@ as guidance when documenting Zulip's features.
 ### User interface
 
 When you refer to the features in the Zulip UI, you should **bold** the
-feature's name followed by the feature itself (e.g. **Settings** page,
+feature's name followed by the feature itself (e.g., **Settings** page,
 **Change password** button, **Email** field). No quotation marks should be
 used. Use **bold** for channel names, and quotation marks for topic names.
 
@@ -242,7 +251,7 @@ an arrow key (↑, ↓, ←, →) will also need the `"arrow-key"` CSS class inc
 in the `<kbd>` start tag (e.g., ` <kbd class="arrow-key">↑</kbd>`).
 
 Use the labels one sees on the actual keyboard rather than the letter they
-produce when pressed (e.g. `R` and `Shift` + `R` rather than `r` and `R`).
+produce when pressed (e.g., `R` and `Shift` + `R` rather than `r` and `R`).
 For symbols, such as `?` or `@`, that are produced through key combinations that
 change depending on the user's keyboard layout, you should use the symbol as it
 appears on a keyboard instead of any specific combination of keys.
@@ -290,7 +299,7 @@ your documentation to help improve its readability:
 ### Images
 
 Images and screenshots should be included in help center documentation
-only if they will help guide the user in how to do something (e.g. if
+only if they will help guide the user in how to do something (e.g., if
 the image will make it much clearer which element on the page the user
 should interact with). For instance, an image of an element should
 not be included if the element the user needs to interact with is the
@@ -435,7 +444,7 @@ languages in API docs, etc. To create a tab switcher, write:
 {end_tabs}
 ```
 
-The tab identifiers (e.g. `desktop-web` above) and their mappings to
+The tab identifiers (e.g., `desktop-web` above) and their mappings to
 the tabs' labels are declared in
 [zerver/lib/markdown/tabbed_sections.py][tabbed-sections-code].
 

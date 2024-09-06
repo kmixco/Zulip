@@ -160,10 +160,6 @@
 
     #scroll-to-bottom-button-container {
         background: transparent;
-
-        & span {
-            color: hsl(0deg 0% 27%);
-        }
     }
 
     .main-view-banner {
@@ -306,9 +302,9 @@
         }
     }
 
-    & textarea.new_message_textarea {
-        &.invalid,
-        &.invalid:focus {
+    #message-content-container {
+        &:has(textarea.new_message_textarea.invalid),
+        &:has(textarea.new_message_textarea.invalid:focus) {
             border-color: hsl(3deg 73% 74%);
             box-shadow: 0 0 2px hsl(3deg 73% 74%);
         }
@@ -346,11 +342,18 @@
         color: inherit;
     }
 
-    /* these are converting grey things to "new grey" */
-    :disabled,
+    /* these are converting grey things to "new grey".
+       :disabled rules are exploded for CSS selector performance reasons. */
+    button:disabled,
+    option:disabled,
+    select:disabled,
+    textarea:disabled,
+    input:disabled,
     input:not([type="radio"]):read-only,
     textarea:read-only,
-    #organization-permissions .dropdown-widget-button:disabled {
+    #organization-permissions .dropdown-widget-button:disabled,
+    #organization-settings .dropdown-widget-button:disabled,
+    #stream-advanced-configurations .dropdown-widget-button:disabled {
         color: inherit;
         opacity: 0.5;
     }
@@ -387,6 +390,10 @@
     .rendered_markdown .message_inline_image {
         background: hsl(0deg 0% 100% / 3%);
 
+        img.image-loading-placeholder {
+            content: url("../images/loading/loader-white.svg");
+        }
+
         &:hover {
             background: hsl(0deg 0% 100% / 15%);
         }
@@ -405,13 +412,15 @@
     .user-status-content-wrapper,
     #custom-expiration-time-input,
     #organization-permissions .dropdown-widget-button,
+    #organization-settings .dropdown-widget-button,
+    #stream-advanced-configurations .dropdown-widget-button,
     #compose_recipient_box {
         background-color: hsl(0deg 0% 0% / 20%);
         border-color: hsl(0deg 0% 0% / 60%);
         color: inherit;
     }
 
-    .dropdown-list-search .dropdown-list-search-input:focus {
+    .popover-filter-input-wrapper .popover-filter-input:focus {
         background-color: hsl(225deg 6% 7%);
         border: 1px solid hsl(0deg 0% 100% / 50%);
         box-shadow: 0 0 5px hsl(0deg 0% 100% / 40%);
@@ -448,12 +457,6 @@
             #searchbox-input-container:hover
             .search_icon {
             opacity: 0.75;
-        }
-
-        /* Colors are inherited in light theme */
-        .navbar-search .search_icon,
-        .navbar-search .search_close_button {
-            color: hsl(0deg 0% 78%);
         }
     }
 
@@ -496,7 +499,6 @@
     }
 
     #compose-content {
-        background-color: hsl(228deg 11% 17%);
         border-color: hsl(0deg 0% 0% / 60%);
     }
 
@@ -511,10 +513,6 @@
     .overlay-message-row .overlay-message-info-box,
     .preview_message_area {
         border-color: hsl(0deg 0% 0% / 40%);
-    }
-
-    .preview_message_area {
-        background-color: hsl(0deg 0% 0% / 20%);
     }
 
     .top-navbar-border {
@@ -533,7 +531,7 @@
         background-color: hsl(212deg 28% 8% / 75%);
     }
 
-    & div.overlay .flex.overlay-content > div,
+    & div.overlay .flex.overlay-content > .overlay-container,
     #settings_page,
     .informational-overlays .overlay-content {
         box-shadow: 0 0 30px hsl(212deg 32% 7%);
@@ -542,7 +540,7 @@
     #draft_overlay,
     #scheduled_messages_overlay_container,
     #message-edit-history-overlay-container {
-        .flex.overlay-content > div {
+        .flex.overlay-content > .overlay-container {
             box-shadow: 0 0 30px hsl(213deg 31% 0%);
             background-color: var(--color-background);
         }
@@ -645,7 +643,7 @@
     }
 
     #recent_view_table {
-        .fa-envelope,
+        .zulip-icon-user,
         .fa-group {
             opacity: 0.7;
         }
@@ -656,8 +654,6 @@
     }
 
     & .drafts-container .drafts-header,
-    .nav > li > a:focus,
-    .nav > li > a:hover,
     .subscriptions-container .subscriptions-header,
     .user-groups-container .user-groups-header,
     .overlay-messages-header,
@@ -700,10 +696,9 @@
     .subscriber-list-box .subscriber_list_container .subscriber-list td,
     .member-list-box,
     .member-list-box .member_list_container .member-list td,
-    #subscription_overlay .subsection-parent div,
     #subscription_overlay .settings-radio-input-parent,
-    #settings_page .sidebar-wrapper,
-    #settings_page .sidebar-wrapper *,
+    #settings_page .sidebar,
+    #settings_page .sidebar .sidebar-item,
     #recent_view_table table td {
         border-color: hsl(0deg 0% 0% / 20%);
     }
@@ -713,10 +708,6 @@
         .message_label_clickable {
         padding: 4px 6px 3px;
         color: inherit;
-    }
-
-    .nav-list > li > a {
-        text-shadow: none;
     }
 
     #message-edit-history-overlay-container {
@@ -897,8 +888,8 @@
     .streams_subheader {
         color: hsl(240deg 11% 85%);
 
-        & span::before,
-        span::after {
+        & .streams_subheader_name::before,
+        .streams_subheader_name::after {
             border-color: hsl(240deg 11% 85%);
         }
     }
@@ -959,7 +950,8 @@
     .color_animated_button {
         background-color: hsl(211deg 29% 14%);
 
-        * {
+        .zulip-icon,
+        .color-animated-button-text {
             color: hsl(0deg 0% 100%);
         }
 
@@ -996,28 +988,29 @@
     .todo-widget {
         & label.checkbox {
             & input[type="checkbox"] {
-                ~ span {
+                ~ .custom-checkbox {
                     border-color: hsl(185deg 40% 45%);
                     opacity: 0.7;
                 }
 
-                &:hover ~ span {
+                &:hover ~ .custom-checkbox {
                     background-color: hsl(185deg 20% 20%);
                     border-color: hsl(185deg 40% 35%);
                 }
 
-                &:checked ~ span {
+                &:checked ~ .custom-checkbox {
                     background-color: hsl(185deg 40% 45%);
                 }
 
-                &:focus ~ span {
+                &:focus ~ .custom-checkbox {
                     outline-color: hsl(0deg 0% 100% / 0%);
                 }
             }
         }
     }
 
-    .panel_user_list > .pill-container {
+    .panel_user_list > .pill-container,
+    .stream_creator_details > .display_only_pill {
         &:hover {
             color: inherit;
         }

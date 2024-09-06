@@ -1,5 +1,5 @@
+from collections.abc import Iterable
 from datetime import timedelta
-from typing import Iterable, Optional, Union
 
 from django.conf import settings
 from django.db import transaction
@@ -18,7 +18,7 @@ from zerver.lib.cache import (
 )
 from zerver.lib.create_user import get_display_email_address
 from zerver.lib.i18n import get_language_name
-from zerver.lib.queue import queue_json_publish
+from zerver.lib.queue import queue_event_on_commit
 from zerver.lib.send_email import FromAddress, clear_scheduled_emails, send_email
 from zerver.lib.timezone import canonicalize_timezone
 from zerver.lib.upload import delete_avatar_image
@@ -42,7 +42,7 @@ from zerver.models import (
 )
 from zerver.models.clients import get_client
 from zerver.models.users import bot_owner_user_ids, get_user_profile_by_id
-from zerver.tornado.django_api import send_event, send_event_on_commit
+from zerver.tornado.django_api import send_event_on_commit
 
 
 def send_user_email_update_event(user_profile: UserProfile) -> None:
@@ -213,10 +213,14 @@ def do_change_password(user_profile: UserProfile, password: str, commit: bool = 
     )
 
 
+@transaction.atomic(savepoint=False)
 def do_change_full_name(
-    user_profile: UserProfile, full_name: str, acting_user: Optional[UserProfile]
+    user_profile: UserProfile, full_name: str, acting_user: UserProfile | None
 ) -> None:
     old_name = user_profile.full_name
+    if old_name == full_name:
+        return
+
     user_profile.full_name = full_name
     user_profile.save(update_fields=["full_name"])
     event_time = timezone_now()
@@ -229,13 +233,13 @@ def do_change_full_name(
         extra_data={RealmAuditLog.OLD_VALUE: old_name, RealmAuditLog.NEW_VALUE: full_name},
     )
     payload = dict(user_id=user_profile.id, full_name=user_profile.full_name)
-    send_event(
+    send_event_on_commit(
         user_profile.realm,
         dict(type="realm_user", op="update", person=payload),
         get_user_ids_who_can_access_user(user_profile),
     )
     if user_profile.is_bot:
-        send_event(
+        send_event_on_commit(
             user_profile.realm,
             dict(type="realm_bot", op="update", bot=payload),
             bot_owner_user_ids(user_profile),
@@ -243,7 +247,7 @@ def do_change_full_name(
 
 
 def check_change_full_name(
-    user_profile: UserProfile, full_name_raw: str, acting_user: Optional[UserProfile]
+    user_profile: UserProfile, full_name_raw: str, acting_user: UserProfile | None
 ) -> str:
     """Verifies that the user's proposed full name is valid.  The caller
     is responsible for checking check permissions.  Returns the new
@@ -278,7 +282,7 @@ def check_change_bot_full_name(
 
 
 @transaction.atomic(durable=True)
-def do_change_tos_version(user_profile: UserProfile, tos_version: Optional[str]) -> None:
+def do_change_tos_version(user_profile: UserProfile, tos_version: str | None) -> None:
     user_profile.tos_version = tos_version
     user_profile.save(update_fields=["tos_version"])
     event_time = timezone_now()
@@ -291,6 +295,7 @@ def do_change_tos_version(user_profile: UserProfile, tos_version: Optional[str])
     )
 
 
+@transaction.atomic(durable=True)
 def do_regenerate_api_key(user_profile: UserProfile, acting_user: UserProfile) -> str:
     old_api_key = user_profile.api_key
     new_api_key = generate_api_key()
@@ -312,7 +317,7 @@ def do_regenerate_api_key(user_profile: UserProfile, acting_user: UserProfile) -
     )
 
     if user_profile.is_bot:
-        send_event(
+        send_event_on_commit(
             user_profile.realm,
             dict(
                 type="realm_bot",
@@ -326,7 +331,7 @@ def do_regenerate_api_key(user_profile: UserProfile, acting_user: UserProfile) -
         )
 
     event = {"type": "clear_push_device_tokens", "user_profile_id": user_profile.id}
-    queue_json_publish("deferred_work", event)
+    queue_event_on_commit("deferred_work", event)
 
     return new_api_key
 
@@ -377,7 +382,7 @@ def do_change_avatar_fields(
     avatar_source: str,
     skip_notify: bool = False,
     *,
-    acting_user: Optional[UserProfile],
+    acting_user: UserProfile | None,
 ) -> None:
     user_profile.avatar_source = avatar_source
     user_profile.avatar_version += 1
@@ -396,9 +401,10 @@ def do_change_avatar_fields(
         notify_avatar_url_change(user_profile)
 
 
-def do_delete_avatar_image(user: UserProfile, *, acting_user: Optional[UserProfile]) -> None:
+def do_delete_avatar_image(user: UserProfile, *, acting_user: UserProfile | None) -> None:
+    old_version = user.avatar_version
     do_change_avatar_fields(user, UserProfile.AVATAR_FROM_GRAVATAR, acting_user=acting_user)
-    delete_avatar_image(user)
+    delete_avatar_image(user, old_version)
 
 
 def update_scheduled_email_notifications_time(
@@ -417,13 +423,13 @@ def update_scheduled_email_notifications_time(
     )
 
 
-@transaction.atomic(durable=True)
+@transaction.atomic(savepoint=False)
 def do_change_user_setting(
     user_profile: UserProfile,
     setting_name: str,
-    setting_value: Union[bool, str, int],
+    setting_value: bool | str | int,
     *,
-    acting_user: Optional[UserProfile],
+    acting_user: UserProfile | None,
 ) -> None:
     old_value = getattr(user_profile, setting_name)
     event_time = timezone_now()
@@ -470,6 +476,8 @@ def do_change_user_setting(
     if setting_name == "default_language":
         assert isinstance(setting_value, str)
         event["language_name"] = get_language_name(setting_value)
+
+    transaction.on_commit(lambda: flush_user_profile(sender=UserProfile, instance=user_profile))
 
     send_event_on_commit(user_profile.realm, event, [user_profile.id])
 
@@ -529,8 +537,6 @@ def do_change_user_setting(
 
         user_profile.email = get_display_email_address(user_profile)
         user_profile.save(update_fields=["email"])
-
-        transaction.on_commit(lambda: flush_user_profile(sender=UserProfile, instance=user_profile))
 
         send_user_email_update_event(user_profile)
         notify_avatar_url_change(user_profile)

@@ -80,7 +80,7 @@ with [`EMAIL_USE_SSL = True`](https://docs.djangoproject.com/en/5.0/ref/settings
 ### Using system email
 
 If you'd like to send outgoing email using the local operating
-system's email delivery configuration (e.g. you have `postfix`
+system's email delivery configuration (e.g., you have `postfix`
 configuration on the system that forwards email sent locally into your
 corporate email system), you will likely need to use something like
 these setting values:
@@ -118,7 +118,7 @@ how to make it work:
   ["less secure"](https://support.google.com/accounts/answer/6010255);
   Gmail doesn't allow servers to send outgoing email by default.
 - Note also that the rate limits for Gmail are also quite low
-  (e.g. 100 / day), so it's easy to get rate-limited if your server
+  (e.g., 100 / day), so it's easy to get rate-limited if your server
   has significant traffic. For more active servers, we recommend
   moving to a free account on a transactional email service.
 
@@ -198,9 +198,9 @@ aren't receiving emails from Zulip:
   you can inspect the emails that reached the service, whether an
   email was flagged as spam, etc.
 
-- Starting with Zulip 1.7, Zulip logs an entry in
-  `/var/log/zulip/send_email.log` whenever it attempts to send an
-  email. The log entry includes whether the request succeeded or failed.
+- Zulip logs an entry in `/var/log/zulip/send_email.log` whenever it
+  attempts to send an email. The log entry includes whether the
+  request succeeded or failed.
 
 - If attempting to send an email throws an exception, a traceback
   should be in `/var/log/zulip/errors.log`, along with any other

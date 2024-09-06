@@ -15,6 +15,8 @@ from corporate.lib.stripe import (
     RemoteRealmBillingSession,
     RemoteServerBillingSession,
     get_configured_fixed_price_plan_offer,
+    get_guest_user_count,
+    get_non_guest_user_count,
     get_price_per_license,
     get_push_status_for_remote_request,
     start_of_next_billing_cycle,
@@ -58,19 +60,20 @@ class SponsorshipRequestDict(TypedDict):
 @dataclass
 class SponsorshipData:
     sponsorship_pending: bool = False
-    monthly_discounted_price: Optional[int] = None
-    annual_discounted_price: Optional[int] = None
-    original_monthly_plan_price: Optional[int] = None
-    original_annual_plan_price: Optional[int] = None
-    minimum_licenses: Optional[int] = None
-    required_plan_tier: Optional[int] = None
-    latest_sponsorship_request: Optional[SponsorshipRequestDict] = None
+    has_discount: bool = False
+    monthly_discounted_price: int | None = None
+    annual_discounted_price: int | None = None
+    original_monthly_plan_price: int | None = None
+    original_annual_plan_price: int | None = None
+    minimum_licenses: int | None = None
+    required_plan_tier: int | None = None
+    latest_sponsorship_request: SponsorshipRequestDict | None = None
 
 
 @dataclass
 class NextPlanData:
     plan: Union["CustomerPlan", "CustomerPlanOffer", None] = None
-    estimated_revenue: Optional[int] = None
+    estimated_revenue: int | None = None
 
 
 @dataclass
@@ -78,24 +81,24 @@ class PlanData:
     customer: Optional["Customer"] = None
     current_plan: Optional["CustomerPlan"] = None
     next_plan: Union["CustomerPlan", "CustomerPlanOffer", None] = None
-    licenses: Optional[int] = None
-    licenses_used: Optional[int] = None
-    next_billing_cycle_start: Optional[datetime] = None
+    licenses: int | None = None
+    licenses_used: int | None = None
+    next_billing_cycle_start: datetime | None = None
     is_legacy_plan: bool = False
     has_fixed_price: bool = False
     is_current_plan_billable: bool = False
-    stripe_customer_url: Optional[str] = None
-    warning: Optional[str] = None
-    annual_recurring_revenue: Optional[int] = None
-    estimated_next_plan_revenue: Optional[int] = None
+    stripe_customer_url: str | None = None
+    warning: str | None = None
+    annual_recurring_revenue: int | None = None
+    estimated_next_plan_revenue: int | None = None
 
 
 @dataclass
 class MobilePushData:
     total_mobile_users: int
     push_notification_status: PushNotificationsEnabledStatus
-    uncategorized_mobile_users: Optional[int] = None
-    mobile_pushes_forwarded: Optional[int] = None
+    uncategorized_mobile_users: int | None = None
+    mobile_pushes_forwarded: int | None = None
     last_mobile_push_sent: str = ""
 
 
@@ -110,9 +113,16 @@ class RemoteSupportData:
 
 
 @dataclass
+class UserData:
+    guest_user_count: int
+    non_guest_user_count: int
+
+
+@dataclass
 class CloudSupportData:
     plan_data: PlanData
     sponsorship_data: SponsorshipData
+    user_data: UserData
 
 
 def get_stripe_customer_url(stripe_id: str) -> str:
@@ -128,18 +138,30 @@ def get_realm_support_url(realm: Realm) -> str:
     return support_url
 
 
+def get_realm_user_data(realm: Realm) -> UserData:
+    non_guests = get_non_guest_user_count(realm)
+    guests = get_guest_user_count(realm)
+    return UserData(
+        guest_user_count=guests,
+        non_guest_user_count=non_guests,
+    )
+
+
 def get_customer_sponsorship_data(customer: Customer) -> SponsorshipData:
     pending = customer.sponsorship_pending
     licenses = customer.minimum_licenses
     plan_tier = customer.required_plan_tier
+    has_discount = False
     sponsorship_request = None
     monthly_discounted_price = None
     annual_discounted_price = None
     original_monthly_plan_price = None
     original_annual_plan_price = None
     if customer.monthly_discounted_price:
+        has_discount = True
         monthly_discounted_price = customer.monthly_discounted_price
     if customer.annual_discounted_price:
+        has_discount = True
         annual_discounted_price = customer.annual_discounted_price
     if plan_tier is not None:
         original_monthly_plan_price = get_price_per_license(
@@ -173,6 +195,7 @@ def get_customer_sponsorship_data(customer: Customer) -> SponsorshipData:
 
     return SponsorshipData(
         sponsorship_pending=pending,
+        has_discount=has_discount,
         monthly_discounted_price=monthly_discounted_price,
         annual_discounted_price=annual_discounted_price,
         original_monthly_plan_price=original_monthly_plan_price,
@@ -193,9 +216,9 @@ def get_annual_invoice_count(billing_schedule: int) -> int:
 def get_next_plan_data(
     billing_session: BillingSession,
     customer: Customer,
-    current_plan: Optional[CustomerPlan] = None,
+    current_plan: CustomerPlan | None = None,
 ) -> NextPlanData:
-    plan_offer: Optional[CustomerPlanOffer] = None
+    plan_offer: CustomerPlanOffer | None = None
 
     # A customer can have a CustomerPlanOffer with or without a current plan.
     if customer.required_plan_tier:
@@ -230,7 +253,7 @@ def get_next_plan_data(
 
 
 def get_plan_data_for_support_view(
-    billing_session: BillingSession, user_count: Optional[int] = None, stale_user_data: bool = False
+    billing_session: BillingSession, user_count: int | None = None, stale_user_data: bool = False
 ) -> PlanData:
     customer = billing_session.get_customer()
     plan = None
@@ -307,7 +330,7 @@ def get_plan_data_for_support_view(
     return plan_data
 
 
-def get_mobile_push_data(remote_entity: Union[RemoteZulipServer, RemoteRealm]) -> MobilePushData:
+def get_mobile_push_data(remote_entity: RemoteZulipServer | RemoteRealm) -> MobilePushData:
     if isinstance(remote_entity, RemoteZulipServer):
         total_users = (
             RemotePushDeviceToken.objects.filter(server=remote_entity)
@@ -416,6 +439,7 @@ def get_data_for_remote_support_view(billing_session: BillingSession) -> RemoteS
 
 def get_data_for_cloud_support_view(billing_session: BillingSession) -> CloudSupportData:
     assert isinstance(billing_session, RealmBillingSession)
+    user_data = get_realm_user_data(billing_session.realm)
     plan_data = get_plan_data_for_support_view(billing_session)
     if plan_data.customer is not None:
         sponsorship_data = get_customer_sponsorship_data(plan_data.customer)
@@ -425,4 +449,5 @@ def get_data_for_cloud_support_view(billing_session: BillingSession) -> CloudSup
     return CloudSupportData(
         plan_data=plan_data,
         sponsorship_data=sponsorship_data,
+        user_data=user_data,
     )

@@ -15,9 +15,10 @@
 import json
 import os
 import sys
+from collections.abc import Callable
 from email.headerregistry import Address
 from functools import wraps
-from typing import Any, Callable, Dict, List, Set, TypeVar
+from typing import Any, TypeVar
 
 from typing_extensions import ParamSpec
 from zulip import Client
@@ -28,9 +29,9 @@ from zerver.openapi.openapi import validate_against_openapi_schema
 
 ZULIP_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-TEST_FUNCTIONS: Dict[str, Callable[..., object]] = {}
-REGISTERED_TEST_FUNCTIONS: Set[str] = set()
-CALLED_TEST_FUNCTIONS: Set[str] = set()
+TEST_FUNCTIONS: dict[str, Callable[..., object]] = {}
+REGISTERED_TEST_FUNCTIONS: set[str] = set()
+CALLED_TEST_FUNCTIONS: set[str] = set()
 
 ParamT = ParamSpec("ParamT")
 ReturnT = TypeVar("ReturnT")
@@ -60,7 +61,7 @@ def openapi_test_function(
     return wrapper
 
 
-def ensure_users(ids_list: List[int], user_names: List[str]) -> None:
+def ensure_users(ids_list: list[int], user_names: list[str]) -> None:
     # Ensure that the list of user ids (ids_list)
     # matches the users we want to refer to (user_names).
     realm = get_realm("zulip")
@@ -71,19 +72,19 @@ def ensure_users(ids_list: List[int], user_names: List[str]) -> None:
     assert ids_list == user_ids
 
 
-def assert_success_response(response: Dict[str, Any]) -> None:
+def assert_success_response(response: dict[str, Any]) -> None:
     assert "result" in response
     assert response["result"] == "success"
 
 
-def assert_error_response(response: Dict[str, Any], code: str = "BAD_REQUEST") -> None:
+def assert_error_response(response: dict[str, Any], code: str = "BAD_REQUEST") -> None:
     assert "result" in response
     assert response["result"] == "error"
     assert "code" in response
     assert response["code"] == code
 
 
-def get_subscribed_stream_ids(client: Client) -> List[int]:
+def get_subscribed_stream_ids(client: Client) -> list[int]:
     streams = client.get_subscriptions()
     stream_ids = [stream["stream_id"] for stream in streams["subscriptions"]]
     return stream_ids
@@ -673,6 +674,26 @@ def remove_realm_playground(client: Client) -> None:
     validate_against_openapi_schema(result, "/realm/playgrounds/{playground_id}", "delete", "200")
 
 
+@openapi_test_function("/export/realm:get")
+def get_realm_exports(client: Client) -> None:
+    # {code_example|start}
+    # Get organization's public data exports.
+    result = client.call_endpoint(url="/export/realm", method="GET")
+    # {code_example|end}
+    assert_success_response(result)
+    validate_against_openapi_schema(result, "/export/realm", "get", "200")
+
+
+@openapi_test_function("/export/realm:post")
+def export_realm(client: Client) -> None:
+    # {code_example|start}
+    # Create a public data export of the organization.
+    result = client.call_endpoint(url="/export/realm", method="POST")
+    # {code_example|end}
+    assert_success_response(result)
+    validate_against_openapi_schema(result, "/export/realm", "post", "200")
+
+
 @openapi_test_function("/users/me:get")
 def get_profile(client: Client) -> None:
     # {code_example|start}
@@ -1040,7 +1061,7 @@ def get_messages(client: Client) -> None:
     # {code_example|start}
     # Get the 100 last messages sent by "iago@zulip.com" to
     # the channel named "Verona".
-    request: Dict[str, Any] = {
+    request: dict[str, Any] = {
         "anchor": "newest",
         "num_before": 100,
         "num_after": 0,
@@ -1114,7 +1135,7 @@ def remove_attachment(client: Client, attachment_id: int) -> None:
 
 @openapi_test_function("/messages:post")
 def send_message(client: Client) -> int:
-    request: Dict[str, Any] = {}
+    request: dict[str, Any] = {}
     # {code_example|start}
     # Send a channel message.
     request = {
@@ -1154,7 +1175,7 @@ def send_message(client: Client) -> int:
 
 @openapi_test_function("/messages/{message_id}/reactions:post")
 def add_reaction(client: Client, message_id: int) -> None:
-    request: Dict[str, Any] = {}
+    request: dict[str, Any] = {}
     # {code_example|start}
     # Add an emoji reaction.
     request = {
@@ -1169,7 +1190,7 @@ def add_reaction(client: Client, message_id: int) -> None:
 
 @openapi_test_function("/messages/{message_id}/reactions:delete")
 def remove_reaction(client: Client, message_id: int) -> None:
-    request: Dict[str, Any] = {}
+    request: dict[str, Any] = {}
     # {code_example|start}
     # Remove an emoji reaction.
     request = {
@@ -1295,7 +1316,7 @@ def get_realm_emoji(client: Client) -> None:
 @openapi_test_function("/messages/flags:post")
 def update_message_flags(client: Client) -> None:
     # Send a few test messages.
-    request: Dict[str, Any] = {
+    request: dict[str, Any] = {
         "type": "stream",
         "to": "Denmark",
         "topic": "Castle",
@@ -1415,7 +1436,7 @@ def upload_file(client: Client) -> None:
             "type": "stream",
             "to": "Denmark",
             "topic": "Castle",
-            "content": "Check out [this picture]({}) of my castle!".format(result["uri"]),
+            "content": "Check out [this picture]({}) of my castle!".format(result["url"]),
         }
     )
     # {code_example|end}
@@ -1809,6 +1830,8 @@ def test_server_organizations(client: Client) -> None:
     get_realm_profile_fields(client)
     reorder_realm_profile_fields(client)
     create_realm_profile_field(client)
+    export_realm(client)
+    get_realm_exports(client)
 
 
 def test_errors(client: Client) -> None:

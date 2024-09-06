@@ -6,7 +6,7 @@ import os
 import platform
 import subprocess
 import sys
-from typing import List, NoReturn
+from typing import NoReturn
 
 os.environ["PYTHONUNBUFFERED"] = "y"
 
@@ -149,7 +149,7 @@ COMMON_YUM_DEPENDENCIES = [
 
 BUILD_GROONGA_FROM_SOURCE = False
 BUILD_PGROONGA_FROM_SOURCE = False
-if (vendor == "debian" and os_version in []) or (vendor == "ubuntu" and os_version in ["24.04"]):
+if (vendor == "debian" and os_version in []) or (vendor == "ubuntu" and os_version in []):
     # For platforms without a PGroonga release, we need to build it
     # from source.
     BUILD_PGROONGA_FROM_SOURCE = True
@@ -232,7 +232,7 @@ def install_system_deps() -> None:
         run_as_root(["./scripts/lib/build-pgroonga"])
 
 
-def install_apt_deps(deps_to_install: List[str]) -> None:
+def install_apt_deps(deps_to_install: list[str]) -> None:
     # setup-apt-repo does an `apt-get update` if the sources.list files changed.
     run_as_root(["./scripts/lib/setup-apt-repo"])
 
@@ -255,7 +255,7 @@ def install_apt_deps(deps_to_install: List[str]) -> None:
     )
 
 
-def install_yum_deps(deps_to_install: List[str]) -> None:
+def install_yum_deps(deps_to_install: list[str]) -> None:
     print(WARNING + "RedHat support is still experimental." + ENDC)
     run_as_root(["./scripts/lib/setup-yum-repo"])
 
@@ -265,7 +265,7 @@ def install_yum_deps(deps_to_install: List[str]) -> None:
     #
     # Error: Package: moreutils-0.49-2.el7.x86_64 (epel)
     #        Requires: perl(IPC::Run)
-    yum_extra_flags: List[str] = []
+    yum_extra_flags: list[str] = []
     if vendor == "rhel":
         proc = subprocess.run(
             ["sudo", "subscription-manager", "status"],

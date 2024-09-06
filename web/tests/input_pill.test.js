@@ -4,14 +4,11 @@ const {strict: assert} = require("assert");
 
 const {mock_esm, set_global, zrequire} = require("./lib/namespace");
 const {run_test, noop} = require("./lib/test");
-const blueslip = require("./lib/zblueslip");
 const $ = require("./lib/zjquery");
 
 set_global("document", {});
 class ClipboardEvent {}
 set_global("ClipboardEvent", ClipboardEvent);
-
-const example_img_link = "http://example.com/example.png";
 
 mock_esm("../src/ui_util", {
     place_caret_at_end: noop,
@@ -23,24 +20,10 @@ set_global("getSelection", () => ({
 
 const input_pill = zrequire("input_pill");
 
-function pill_html(value, img_src, status_emoji_info) {
-    const has_image = img_src !== undefined;
-    const has_status = status_emoji_info !== undefined;
-
+function pill_html(value) {
     const opts = {
         display_value: value,
-        has_image,
-        has_status,
     };
-
-    if (has_image) {
-        opts.img_src = img_src;
-    }
-
-    if (has_status) {
-        opts.status_emoji_info = status_emoji_info;
-    }
-
     return require("../templates/input_pill.hbs")(opts);
 }
 
@@ -58,24 +41,18 @@ run_test("basics", ({mock_template}) => {
         $container,
         create_item_from_text: noop,
         get_text_from_item: noop,
-        pill_config: {
-            show_user_status_emoji: true,
-        },
+        get_display_value_from_item: (item) => item.language,
     });
-    const status_emoji_info = {emoji_code: "5"};
 
     // type for a pill can be any string but it needs to be
     // defined while creating any pill.
     const item = {
-        display_value: "JavaScript",
-        language: "js",
+        language: "JavaScript",
         type: "language",
-        img_src: example_img_link,
-        status_emoji_info,
     };
 
     let inserted_before;
-    const expected_html = pill_html("JavaScript", example_img_link, status_emoji_info);
+    const expected_html = pill_html("JavaScript");
 
     $pill_input.before = ($elem) => {
         inserted_before = true;
@@ -91,20 +68,19 @@ run_test("basics", ({mock_template}) => {
 function set_up() {
     const items = {
         blue: {
-            display_value: "BLUE",
+            color_name: "BLUE",
             description: "color of the sky",
             type: "color",
-            img_src: example_img_link,
         },
 
         red: {
-            display_value: "RED",
+            color_name: "RED",
             type: "color",
             description: "color of stop signs",
         },
 
         yellow: {
-            display_value: "YELLOW",
+            color_name: "YELLOW",
             type: "color",
             description: "color of bananas",
         },
@@ -113,6 +89,7 @@ function set_up() {
     const $pill_input = $.create("pill_input");
 
     $pill_input[0] = {};
+    $pill_input.length = 1;
     $pill_input.before = noop;
 
     const create_item_from_text = (text) => items[text];
@@ -123,7 +100,8 @@ function set_up() {
     const config = {
         $container,
         create_item_from_text,
-        get_text_from_item: (item) => item.display_value,
+        get_text_from_item: (item) => item.color_name,
+        get_display_value_from_item: (item) => item.color_name,
     };
 
     return {
@@ -138,6 +116,7 @@ run_test("copy from pill", ({mock_template}) => {
     mock_template("input_pill.hbs", true, (data, html) => {
         assert.ok(["BLUE", "RED"].includes(data.display_value));
         $(html)[0] = `<pill-stub ${data.display_value}>`;
+        $(html).length = 1;
         return html;
     });
 
@@ -172,10 +151,7 @@ run_test("copy from pill", ({mock_template}) => {
 });
 
 run_test("paste to input", ({mock_template}) => {
-    mock_template("input_pill.hbs", true, (data, html) => {
-        assert.equal(typeof data.has_image, "boolean");
-        return html;
-    });
+    mock_template("input_pill.hbs", true, (_data, html) => html);
 
     const info = set_up();
     const config = info.config;
@@ -219,10 +195,7 @@ run_test("paste to input", ({mock_template}) => {
 });
 
 run_test("arrows on pills", ({mock_template}) => {
-    mock_template("input_pill.hbs", true, (data, html) => {
-        assert.equal(typeof data.has_image, "boolean");
-        return html;
-    });
+    mock_template("input_pill.hbs", true, (_data, html) => html);
 
     const info = set_up();
     const config = info.config;
@@ -379,6 +352,7 @@ run_test("insert_remove", ({mock_template}) => {
     mock_template("input_pill.hbs", true, (data, html) => {
         assert.equal(typeof data.display_value, "string");
         assert.ok(html.startsWith, "<div class='pill'");
+        $(html).length = 1;
         $(html)[0] = `<pill-stub ${data.display_value}>`;
         return html;
     });
@@ -413,11 +387,7 @@ run_test("insert_remove", ({mock_template}) => {
     assert.ok(created);
     assert.ok(!removed);
 
-    assert.deepEqual(inserted_html, [
-        pill_html("BLUE", example_img_link),
-        pill_html("RED"),
-        pill_html("YELLOW"),
-    ]);
+    assert.deepEqual(inserted_html, [pill_html("BLUE"), pill_html("RED"), pill_html("YELLOW")]);
 
     assert.deepEqual(widget.items(), [items.blue, items.red, items.yellow]);
 
@@ -437,7 +407,7 @@ run_test("insert_remove", ({mock_template}) => {
 
     const pills = widget._get_pills_for_testing();
     for (const pill of pills) {
-        pill.$element.remove = set_colored_removed_func(pill.item.display_value);
+        pill.$element.remove = set_colored_removed_func(pill.item.color_name);
     }
 
     let key_handler = $container.get_on_handler("keydown", ".input");
@@ -470,6 +440,7 @@ run_test("insert_remove", ({mock_template}) => {
     const $focus_pill_stub = {
         next: () => $next_pill_stub,
         [0]: "<pill-stub BLUE>",
+        length: 1,
     };
 
     $container.set_find_results(".pill:focus", $focus_pill_stub);
@@ -489,6 +460,7 @@ run_test("exit button on pill", ({mock_template}) => {
         assert.equal(typeof data.display_value, "string");
         assert.ok(html.startsWith, "<div class='pill'");
         $(html)[0] = `<pill-stub ${data.display_value}>`;
+        $(html).length = 1;
         return html;
     });
     $(".narrow_to_compose_recipients").toggleClass = noop;
@@ -508,19 +480,9 @@ run_test("exit button on pill", ({mock_template}) => {
         pill.$element.remove = noop;
     }
 
-    let next_pill_focused = false;
-
-    const $next_pill_stub = {
-        trigger(type) {
-            if (type === "focus") {
-                next_pill_focused = true;
-            }
-        },
-    };
-
     const $curr_pill_stub = {
-        next: () => $next_pill_stub,
         [0]: "<pill-stub BLUE>",
+        length: 1,
     };
 
     const exit_button_stub = {
@@ -539,19 +501,15 @@ run_test("exit button on pill", ({mock_template}) => {
 
     exit_click_handler.call(exit_button_stub, e);
 
-    assert.ok(next_pill_focused);
-
     assert.deepEqual(widget.items(), [items.red]);
 });
 
 run_test("misc things", () => {
     const info = set_up();
 
-    const config = info.config;
     const $container = info.$container;
     const $pill_input = info.$pill_input;
-
-    const widget = input_pill.create(config);
+    input_pill.create(info.config);
 
     // animation
     const animation_end_handler = $container.get_on_handler("animationend", ".input");
@@ -569,17 +527,6 @@ run_test("misc things", () => {
 
     animation_end_handler.call(input_stub);
     assert.ok(shake_class_removed);
-
-    // bad data
-    blueslip.expect("error", "no display_value returned");
-    widget.appendValidatedData("this-has-no-item-attribute");
-
-    blueslip.expect("error", "no type defined for the item");
-    widget.appendValidatedData({
-        display_value: "This item has no type.",
-        language: "js",
-        img_src: example_img_link,
-    });
 
     // click on container
     const container_click_handler = $container.get_on_handler("click");
@@ -611,12 +558,14 @@ run_test("appendValue/clear", ({mock_template}) => {
 
     const config = {
         $container,
-        create_item_from_text: (s) => ({type: "color", display_value: s}),
-        get_text_from_item: /* istanbul ignore next */ (s) => s.display_value,
+        create_item_from_text: (s) => ({type: "color", color_name: s}),
+        get_text_from_item: /* istanbul ignore next */ (s) => s.color_name,
+        get_display_value_from_item: (s) => s.color_name,
     };
 
     $pill_input.before = noop;
     $pill_input[0] = {};
+    $pill_input.length = 1;
 
     const widget = input_pill.create(config);
 
@@ -632,7 +581,7 @@ run_test("appendValue/clear", ({mock_template}) => {
     const removed_colors = [];
     for (const pill of pills) {
         pill.$element.remove = () => {
-            removed_colors.push(pill.item.display_value);
+            removed_colors.push(pill.item.color_name);
         };
     }
 

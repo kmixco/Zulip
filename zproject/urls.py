@@ -1,5 +1,4 @@
 import os
-from typing import List, Union
 
 from django.conf import settings
 from django.conf.urls import include
@@ -177,7 +176,6 @@ from zerver.views.streams import (
 )
 from zerver.views.submessage import process_submessage
 from zerver.views.thumbnail import backend_serve_thumbnail
-from zerver.views.tutorial import set_tutorial_status
 from zerver.views.typing import send_notification_backend
 from zerver.views.unsubscribe import email_unsubscribe
 from zerver.views.upload import (
@@ -427,16 +425,6 @@ v1_api_and_json_patterns = [
             {"intentionally_undocumented"},
         ),
     ),
-    # users/me/tutorial_status -> zerver.views.tutorial
-    rest_path(
-        "users/me/tutorial_status",
-        POST=(
-            set_tutorial_status,
-            # This is a relic of an old Zulip tutorial model and
-            # should be deleted.
-            {"intentionally_undocumented"},
-        ),
-    ),
     # settings -> zerver.views.user_settings
     rest_path("settings", PATCH=json_change_settings),
     # These next two are legacy aliases for /settings, from before
@@ -632,7 +620,7 @@ i18n_urls = [
 ]
 
 # Make a copy of i18n_urls so that they appear without prefix for english
-urls: List[Union[URLPattern, URLResolver]] = list(i18n_urls)
+urls: list[URLPattern | URLResolver] = list(i18n_urls)
 
 # Include the dual-use patterns twice
 urls += [
@@ -657,6 +645,10 @@ urls += [
     rest_path(
         "user_uploads/download/<realm_id_str>/<path:filename>",
         GET=(serve_file_download_backend, {"override_api_url_scheme", "allow_anonymous_user_web"}),
+    ),
+    rest_path(
+        "user_uploads/thumbnail/<realm_id_str>/<path:filename>/<str:thumbnail_format>",
+        GET=(serve_file_backend, {"override_api_url_scheme", "allow_anonymous_user_web"}),
     ),
     rest_path(
         "user_uploads/<realm_id_str>/<path:filename>",

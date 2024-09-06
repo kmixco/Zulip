@@ -1,10 +1,12 @@
-import type {ExternalAccountFieldData} from "./settings_components";
+import {z} from "zod";
 
 // TODO/typescript: Move this to server_events
-export type TopicLink = {
-    text: string;
-    url: string;
-};
+export const topic_link_schema = z.object({
+    text: z.string(),
+    url: z.string(),
+});
+
+export type TopicLink = z.infer<typeof topic_link_schema>;
 
 // TODO/typescript: Move this to server_events_dispatch
 export type UserGroupUpdateEvent = {
@@ -14,6 +16,7 @@ export type UserGroupUpdateEvent = {
     data: {
         name?: string;
         description?: string;
+        can_manage_group?: number;
         can_mention_group?: number;
     };
 };
@@ -37,29 +40,12 @@ export type UpdateMessageEvent = {
     topic_links?: TopicLink[];
     orig_content?: string;
     orig_rendered_content?: string;
-    prev_rendered_content_version?: number;
     content?: string;
     rendered_content?: string;
     is_me_message?: boolean;
     // The server is still using subject.
     // This will not be set until it gets fixed.
     topic?: string;
-};
-
-// TODO/typescript: Move this to user_profile
-export type UserExternalAccountData = {
-    display_in_profile_summary: boolean | undefined;
-    field_data?: ExternalAccountFieldData;
-    id: number;
-    is_external_account: boolean;
-    is_link: boolean;
-    is_user_field: boolean;
-    name: string;
-    type: number;
-    required: boolean;
-    value: string;
-    subtype?: string;
-    link?: string;
 };
 
 export type HTMLSelectOneElement = HTMLSelectElement & {type: "select-one"};

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
@@ -8,18 +7,18 @@ class URLRedirect:
     new_url: str
 
 
-API_DOCUMENTATION_REDIRECTS: List[URLRedirect] = [
+API_DOCUMENTATION_REDIRECTS: list[URLRedirect] = [
     # Add URL redirects for REST API documentation here:
     URLRedirect("/api/delete-stream", "/api/archive-stream"),
 ]
 
-POLICY_DOCUMENTATION_REDIRECTS: List[URLRedirect] = [
+POLICY_DOCUMENTATION_REDIRECTS: list[URLRedirect] = [
     # Add URL redirects for policy documentation here:
     URLRedirect("/privacy/", "/policies/privacy"),
     URLRedirect("/terms/", "/policies/terms"),
 ]
 
-HELP_DOCUMENTATION_REDIRECTS: List[URLRedirect] = [
+HELP_DOCUMENTATION_REDIRECTS: list[URLRedirect] = [
     # Add URL redirects for help center documentation here:
     URLRedirect("/help/pm-mention-alert-notifications", "/help/dm-mention-alert-notifications"),
     URLRedirect("/help/restrict-private-messages", "/help/restrict-direct-messages"),
@@ -62,8 +61,8 @@ HELP_DOCUMENTATION_REDIRECTS: List[URLRedirect] = [
     URLRedirect("/help/disable-new-login-emails", "/help/email-notifications#new-login-emails"),
     # The `help/about-streams-and-topics` and `help/streams-and-topics` redirects are particularly
     # important, because the old URLs appear in links from Welcome Bot messages.
-    URLRedirect("/help/about-streams-and-topics", "/help/channels-and-topics"),
-    URLRedirect("/help/streams-and-topics", "/help/channels-and-topics"),
+    URLRedirect("/help/about-streams-and-topics", "/help/introduction-to-topics"),
+    URLRedirect("/help/streams-and-topics", "/help/introduction-to-topics"),
     URLRedirect("/help/community-topic-edits", "/help/restrict-moving-messages"),
     URLRedirect(
         "/help/only-allow-admins-to-add-emoji", "/help/custom-emoji#change-who-can-add-custom-emoji"
@@ -126,6 +125,7 @@ HELP_DOCUMENTATION_REDIRECTS: List[URLRedirect] = [
         "/help/browse-and-subscribe-to-channels",
         "/help/introduction-to-channels#browse-and-subscribe-to-channels",
     ),
+    URLRedirect("/help/allow-image-link-previews", "/help/image-video-and-website-previews"),
 ]
 
 LANDING_PAGE_REDIRECTS = [

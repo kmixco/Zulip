@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Tuple
+from collections.abc import Iterable
 
 from django.conf import settings
 from django.db import transaction
@@ -33,6 +33,7 @@ def create_internal_realm() -> None:
     # is changed later before the transaction is committed.
     for permission_configuration in Realm.REALM_PERMISSION_GROUP_SETTINGS.values():
         setattr(realm, permission_configuration.id_field_name, -1)
+    realm.delete_own_message_policy = 1
     realm.save()
 
     RealmAuditLog.objects.create(
@@ -78,14 +79,12 @@ def create_internal_realm() -> None:
 
 def create_users(
     realm: Realm,
-    name_list: Iterable[Tuple[str, str]],
-    tos_version: Optional[str] = None,
-    bot_type: Optional[int] = None,
-    bot_owner: Optional[UserProfile] = None,
+    name_list: Iterable[tuple[str, str]],
+    tos_version: str | None = None,
+    bot_type: int | None = None,
+    bot_owner: UserProfile | None = None,
 ) -> None:
-    user_set = set()
-    for full_name, email in name_list:
-        user_set.add((email, full_name, True))
+    user_set = {(email, full_name, True) for full_name, email in name_list}
     bulk_create_users(
         realm, user_set, bot_type=bot_type, bot_owner=bot_owner, tos_version=tos_version
     )

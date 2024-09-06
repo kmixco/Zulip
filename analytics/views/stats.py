@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import Annotated, Any, Optional, TypeAlias, TypeVar, cast
 
 from django.conf import settings
 from django.db.models import QuerySet
@@ -10,7 +10,7 @@ from django.shortcuts import render
 from django.utils import translation
 from django.utils.timezone import now as timezone_now
 from django.utils.translation import gettext as _
-from typing_extensions import TypeAlias
+from pydantic import BeforeValidator, Json, NonNegativeInt
 
 from analytics.lib.counts import COUNT_STATS, CountStat
 from analytics.lib.time_utils import time_range
@@ -31,11 +31,10 @@ from zerver.decorator import (
 )
 from zerver.lib.exceptions import JsonableError
 from zerver.lib.i18n import get_and_set_request_language, get_language_translation_data
-from zerver.lib.request import REQ, has_request_variables
 from zerver.lib.response import json_success
 from zerver.lib.streams import access_stream_by_id
 from zerver.lib.timestamp import convert_to_UTC
-from zerver.lib.validator import to_non_negative_int
+from zerver.lib.typed_endpoint import PathOnly, typed_endpoint
 from zerver.models import Client, Realm, Stream, UserProfile
 from zerver.models.realms import get_realm
 
@@ -52,9 +51,9 @@ def is_analytics_ready(realm: Realm) -> bool:
 def render_stats(
     request: HttpRequest,
     data_url_suffix: str,
-    realm: Optional[Realm],
+    realm: Realm | None,
     *,
-    title: Optional[str] = None,
+    title: str | None = None,
     analytics_ready: bool = True,
 ) -> HttpResponse:
     assert request.user.is_authenticated
@@ -112,8 +111,8 @@ def stats(request: HttpRequest) -> HttpResponse:
 
 
 @require_server_admin
-@has_request_variables
-def stats_for_realm(request: HttpRequest, realm_str: str) -> HttpResponse:
+@typed_endpoint
+def stats_for_realm(request: HttpRequest, *, realm_str: PathOnly[str]) -> HttpResponse:
     try:
         realm = get_realm(realm_str)
     except Realm.DoesNotExist:
@@ -128,9 +127,9 @@ def stats_for_realm(request: HttpRequest, realm_str: str) -> HttpResponse:
 
 
 @require_server_admin
-@has_request_variables
+@typed_endpoint
 def stats_for_remote_realm(
-    request: HttpRequest, remote_server_id: int, remote_realm_id: int
+    request: HttpRequest, *, remote_server_id: PathOnly[int], remote_realm_id: PathOnly[int]
 ) -> HttpResponse:
     assert settings.ZILENCER_ENABLED
     server = RemoteZulipServer.objects.get(id=remote_server_id)
@@ -143,22 +142,45 @@ def stats_for_remote_realm(
 
 
 @require_server_admin_api
-@has_request_variables
+@typed_endpoint
 def get_chart_data_for_realm(
-    request: HttpRequest, /, user_profile: UserProfile, realm_str: str, **kwargs: Any
+    request: HttpRequest,
+    user_profile: UserProfile,
+    /,
+    *,
+    realm_str: PathOnly[str],
+    chart_name: str,
+    min_length: Json[NonNegativeInt] | None = None,
+    start: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
+    end: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
 ) -> HttpResponse:
     try:
         realm = get_realm(realm_str)
     except Realm.DoesNotExist:
         raise JsonableError(_("Invalid organization"))
 
-    return get_chart_data(request, user_profile, realm=realm, **kwargs)
+    return do_get_chart_data(
+        request,
+        user_profile,
+        realm=realm,
+        chart_name=chart_name,
+        min_length=min_length,
+        start=start,
+        end=end,
+    )
 
 
 @require_non_guest_user
-@has_request_variables
+@typed_endpoint
 def get_chart_data_for_stream(
-    request: HttpRequest, /, user_profile: UserProfile, stream_id: int
+    request: HttpRequest,
+    user_profile: UserProfile,
+    *,
+    stream_id: PathOnly[int],
+    chart_name: str,
+    min_length: Json[NonNegativeInt] | None = None,
+    start: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
+    end: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
 ) -> HttpResponse:
     stream, ignored_sub = access_stream_by_id(
         user_profile,
@@ -167,28 +189,43 @@ def get_chart_data_for_stream(
         allow_realm_admin=True,
     )
 
-    return get_chart_data(request, user_profile, stream=stream)
+    return do_get_chart_data(
+        request,
+        user_profile,
+        stream=stream,
+        chart_name=chart_name,
+        min_length=min_length,
+        start=start,
+        end=end,
+    )
 
 
 @require_server_admin_api
-@has_request_variables
+@typed_endpoint
 def get_chart_data_for_remote_realm(
     request: HttpRequest,
-    /,
     user_profile: UserProfile,
-    remote_server_id: int,
-    remote_realm_id: int,
-    **kwargs: Any,
+    /,
+    *,
+    remote_server_id: PathOnly[int],
+    remote_realm_id: PathOnly[int],
+    chart_name: str,
+    min_length: Json[NonNegativeInt] | None = None,
+    start: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
+    end: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
 ) -> HttpResponse:
     assert settings.ZILENCER_ENABLED
     server = RemoteZulipServer.objects.get(id=remote_server_id)
-    return get_chart_data(
+    return do_get_chart_data(
         request,
         user_profile,
         server=server,
         remote=True,
-        remote_realm_id=int(remote_realm_id),
-        **kwargs,
+        remote_realm_id=remote_realm_id,
+        chart_name=chart_name,
+        min_length=min_length,
+        start=start,
+        end=end,
     )
 
 
@@ -211,60 +248,102 @@ def stats_for_remote_installation(request: HttpRequest, remote_server_id: int) -
 
 
 @require_server_admin_api
-@has_request_variables
+@typed_endpoint
 def get_chart_data_for_installation(
-    request: HttpRequest, /, user_profile: UserProfile, chart_name: str = REQ(), **kwargs: Any
+    request: HttpRequest,
+    user_profile: UserProfile,
+    /,
+    *,
+    chart_name: str,
+    min_length: Json[NonNegativeInt] | None = None,
+    start: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
+    end: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
 ) -> HttpResponse:
-    return get_chart_data(request, user_profile, for_installation=True, **kwargs)
+    return do_get_chart_data(
+        request,
+        user_profile,
+        for_installation=True,
+        chart_name=chart_name,
+        min_length=min_length,
+        start=start,
+        end=end,
+    )
 
 
 @require_server_admin_api
-@has_request_variables
+@typed_endpoint
 def get_chart_data_for_remote_installation(
     request: HttpRequest,
-    /,
     user_profile: UserProfile,
-    remote_server_id: int,
-    chart_name: str = REQ(),
-    **kwargs: Any,
+    /,
+    *,
+    remote_server_id: PathOnly[int],
+    chart_name: str,
+    min_length: Json[NonNegativeInt] | None = None,
+    start: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
+    end: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
 ) -> HttpResponse:
     assert settings.ZILENCER_ENABLED
     server = RemoteZulipServer.objects.get(id=remote_server_id)
-    return get_chart_data(
+    return do_get_chart_data(
         request,
         user_profile,
         for_installation=True,
         remote=True,
         server=server,
-        **kwargs,
+        chart_name=chart_name,
+        min_length=min_length,
+        start=start,
+        end=end,
     )
 
 
 @require_non_guest_user
-@has_request_variables
+@typed_endpoint
 def get_chart_data(
     request: HttpRequest,
     user_profile: UserProfile,
-    chart_name: str = REQ(),
-    min_length: Optional[int] = REQ(converter=to_non_negative_int, default=None),
-    start: Optional[datetime] = REQ(converter=to_utc_datetime, default=None),
-    end: Optional[datetime] = REQ(converter=to_utc_datetime, default=None),
-    # These last several parameters are only used by functions
-    # wrapping get_chart_data; the callers are responsible for
-    # parsing/validation/authorization for them.
-    realm: Optional[Realm] = None,
+    *,
+    chart_name: str,
+    min_length: Json[NonNegativeInt] | None = None,
+    start: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
+    end: Annotated[datetime | None, BeforeValidator(to_utc_datetime)] = None,
+) -> HttpResponse:
+    return do_get_chart_data(
+        request,
+        user_profile,
+        chart_name=chart_name,
+        min_length=min_length,
+        start=start,
+        end=end,
+    )
+
+
+@require_non_guest_user
+def do_get_chart_data(
+    request: HttpRequest,
+    user_profile: UserProfile,
+    *,
+    # Common parameters supported by all stats endpoints.
+    chart_name: str,
+    min_length: NonNegativeInt | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    # The following parameters are only used by wrapping functions for
+    # various contexts; the callers are responsible for validating them.
+    realm: Realm | None = None,
     for_installation: bool = False,
     remote: bool = False,
-    remote_realm_id: Optional[int] = None,
+    remote_realm_id: int | None = None,
     server: Optional["RemoteZulipServer"] = None,
-    stream: Optional[Stream] = None,
+    stream: Stream | None = None,
 ) -> HttpResponse:
-    TableType: TypeAlias = Union[
-        Type["RemoteInstallationCount"],
-        Type[InstallationCount],
-        Type["RemoteRealmCount"],
-        Type[RealmCount],
-    ]
+    TableType: TypeAlias = (
+        type["RemoteInstallationCount"]
+        | type[InstallationCount]
+        | type["RemoteRealmCount"]
+        | type[RealmCount]
+    )
     if for_installation:
         if remote:
             assert settings.ZILENCER_ENABLED
@@ -281,9 +360,9 @@ def get_chart_data(
         else:
             aggregate_table = RealmCount
 
-    tables: Union[
-        Tuple[TableType], Tuple[TableType, Type[UserCount]], Tuple[TableType, Type[StreamCount]]
-    ]
+    tables: (
+        tuple[TableType] | tuple[TableType, type[UserCount]] | tuple[TableType, type[StreamCount]]
+    )
 
     if chart_name == "number_of_humans":
         stats = [
@@ -292,7 +371,7 @@ def get_chart_data(
             COUNT_STATS["active_users_audit:is_bot:day"],
         ]
         tables = (aggregate_table,)
-        subgroup_to_label: Dict[CountStat, Dict[Optional[str], str]] = {
+        subgroup_to_label: dict[CountStat, dict[str | None, str]] = {
             stats[0]: {None: "_1day"},
             stats[1]: {None: "_15day"},
             stats[2]: {"false": "all_time"},
@@ -372,7 +451,7 @@ def get_chart_data(
         assert server is not None
         assert aggregate_table is RemoteInstallationCount or aggregate_table is RemoteRealmCount
         aggregate_table_remote = cast(
-            Union[Type[RemoteInstallationCount], Type[RemoteRealmCount]], aggregate_table
+            type[RemoteInstallationCount] | type[RemoteRealmCount], aggregate_table
         )  # https://stackoverflow.com/questions/68540528/mypy-assertions-on-the-types-of-types
         if not aggregate_table_remote.objects.filter(server=server).exists():
             raise JsonableError(
@@ -418,7 +497,7 @@ def get_chart_data(
 
     assert len({stat.frequency for stat in stats}) == 1
     end_times = time_range(start, end, stats[0].frequency, min_length)
-    data: Dict[str, Any] = {
+    data: dict[str, Any] = {
         "end_times": [int(end_time.timestamp()) for end_time in end_times],
         "frequency": stats[0].frequency,
     }
@@ -471,7 +550,7 @@ def get_chart_data(
     return json_success(request, data=data)
 
 
-def sort_by_totals(value_arrays: Dict[str, List[int]]) -> List[str]:
+def sort_by_totals(value_arrays: dict[str, list[int]]) -> list[str]:
     totals = sorted(((sum(values), label) for label, values in value_arrays.items()), reverse=True)
     return [label for total, label in totals]
 
@@ -482,10 +561,10 @@ def sort_by_totals(value_arrays: Dict[str, List[int]]) -> List[str]:
 # understanding the realm's traffic and the user's traffic. This function
 # tries to rank the clients so that taking the first N elements of the
 # sorted list has a reasonable chance of doing so.
-def sort_client_labels(data: Dict[str, Dict[str, List[int]]]) -> List[str]:
+def sort_client_labels(data: dict[str, dict[str, list[int]]]) -> list[str]:
     realm_order = sort_by_totals(data["everyone"])
     user_order = sort_by_totals(data["user"])
-    label_sort_values: Dict[str, float] = {label: i for i, label in enumerate(realm_order)}
+    label_sort_values: dict[str, float] = {label: i for i, label in enumerate(realm_order)}
     for i, label in enumerate(user_order):
         label_sort_values[label] = min(i - 0.1, label_sort_values.get(label, i))
     return [label for label, sort_value in sorted(label_sort_values.items(), key=lambda x: x[1])]
@@ -494,7 +573,7 @@ def sort_client_labels(data: Dict[str, Dict[str, List[int]]]) -> List[str]:
 CountT = TypeVar("CountT", bound=BaseCount)
 
 
-def table_filtered_to_id(table: Type[CountT], key_id: int) -> QuerySet[CountT]:
+def table_filtered_to_id(table: type[CountT], key_id: int) -> QuerySet[CountT]:
     if table == RealmCount:
         return table._default_manager.filter(realm_id=key_id)
     elif table == UserCount:
@@ -535,8 +614,8 @@ def client_label_map(name: str) -> str:
     return name
 
 
-def rewrite_client_arrays(value_arrays: Dict[str, List[int]]) -> Dict[str, List[int]]:
-    mapped_arrays: Dict[str, List[int]] = {}
+def rewrite_client_arrays(value_arrays: dict[str, list[int]]) -> dict[str, list[int]]:
+    mapped_arrays: dict[str, list[int]] = {}
     for label, array in value_arrays.items():
         mapped_label = client_label_map(label)
         if mapped_label in mapped_arrays:
@@ -549,18 +628,18 @@ def rewrite_client_arrays(value_arrays: Dict[str, List[int]]) -> Dict[str, List[
 
 def get_time_series_by_subgroup(
     stat: CountStat,
-    table: Type[BaseCount],
+    table: type[BaseCount],
     key_id: int,
-    end_times: List[datetime],
-    subgroup_to_label: Dict[Optional[str], str],
+    end_times: list[datetime],
+    subgroup_to_label: dict[str | None, str],
     include_empty_subgroups: bool,
-) -> Dict[str, List[int]]:
+) -> dict[str, list[int]]:
     queryset = (
         table_filtered_to_id(table, key_id)
         .filter(property=stat.property)
         .values_list("subgroup", "end_time", "value")
     )
-    value_dicts: Dict[Optional[str], Dict[datetime, int]] = defaultdict(lambda: defaultdict(int))
+    value_dicts: dict[str | None, dict[datetime, int]] = defaultdict(lambda: defaultdict(int))
     for subgroup, end_time, value in queryset:
         value_dicts[subgroup][end_time] = value
     value_arrays = {}

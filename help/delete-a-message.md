@@ -6,8 +6,8 @@ can restore deleted messages.
 
 Organization administrators can
 [configure](/help/restrict-message-editing-and-deletion) who can edit and delete
-messages, and set time limits for these actions. Administrators can delete other
-users' messages completely, but cannot edit a message to delete its content.
+their own messages, and who can delete any message. They can also set time
+limits on message editing and deletion.
 
 ## Delete message content
 

@@ -5,7 +5,7 @@ import os
 import pwd
 import subprocess
 import sys
-from typing import Any, Dict, List, Set
+from typing import Any
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(TOOLS_DIR))
@@ -34,7 +34,7 @@ USAGE = """
     """
 
 
-def make_set(files: List[str]) -> Set[str]:
+def make_set(files: list[str]) -> set[str]:
     for i in range(1, len(files)):
         if files[i - 1] > files[i]:
             raise Exception(f"Please move {files[i]} so that names are sorted.")
@@ -72,7 +72,7 @@ EXEMPT_FILES = make_set(
         "web/src/compose_closed_ui.ts",
         "web/src/compose_fade.ts",
         "web/src/compose_notifications.ts",
-        "web/src/compose_popovers.js",
+        "web/src/compose_popovers.ts",
         "web/src/compose_recipient.ts",
         "web/src/compose_reply.ts",
         "web/src/compose_send_menu_popover.js",
@@ -100,10 +100,10 @@ EXEMPT_FILES = make_set(
         "web/src/drafts.ts",
         "web/src/drafts_overlay_ui.js",
         "web/src/dropdown_widget.ts",
-        "web/src/echo.js",
+        "web/src/echo.ts",
         "web/src/electron_bridge.d.ts",
         "web/src/email_pill.ts",
-        "web/src/emoji_picker.js",
+        "web/src/emoji_picker.ts",
         "web/src/emojisets.ts",
         "web/src/favicon.ts",
         "web/src/feedback_widget.ts",
@@ -121,6 +121,7 @@ EXEMPT_FILES = make_set(
         "web/src/inbox_util.ts",
         "web/src/info_overlay.ts",
         "web/src/information_density.ts",
+        "web/src/input_pill.ts",
         "web/src/integration_url_modal.ts",
         "web/src/invite.ts",
         "web/src/invite_stream_picker_pill.ts",
@@ -133,12 +134,13 @@ EXEMPT_FILES = make_set(
         "web/src/local_message.ts",
         "web/src/localstorage.ts",
         "web/src/message_actions_popover.js",
-        "web/src/message_edit.js",
+        "web/src/message_edit.ts",
         "web/src/message_edit_history.ts",
         "web/src/message_events.js",
+        "web/src/message_events_util.ts",
         "web/src/message_feed_loading.ts",
         "web/src/message_feed_top_notices.ts",
-        "web/src/message_fetch.js",
+        "web/src/message_fetch.ts",
         "web/src/message_list.js",
         "web/src/message_list_data.ts",
         "web/src/message_list_hover.js",
@@ -175,7 +177,7 @@ EXEMPT_FILES = make_set(
         "web/src/poll_modal.ts",
         "web/src/poll_widget.ts",
         "web/src/popover_menus.ts",
-        "web/src/popover_menus_data.js",
+        "web/src/popover_menus_data.ts",
         "web/src/popovers.ts",
         "web/src/popperjs.d.ts",
         "web/src/read_receipts.ts",
@@ -198,12 +200,14 @@ EXEMPT_FILES = make_set(
         "web/src/scroll_bar.ts",
         "web/src/scroll_util.ts",
         "web/src/search.ts",
+        "web/src/search_pill.ts",
+        "web/src/search_suggestion.ts",
         "web/src/sent_messages.ts",
         "web/src/sentry.ts",
         "web/src/server_events.js",
         "web/src/settings.js",
         "web/src/settings_account.js",
-        "web/src/settings_bots.js",
+        "web/src/settings_bots.ts",
         "web/src/settings_components.ts",
         "web/src/settings_emoji.ts",
         "web/src/settings_exports.ts",
@@ -248,13 +252,13 @@ EXEMPT_FILES = make_set(
         "web/src/submessage.ts",
         "web/src/subscriber_api.ts",
         "web/src/theme.ts",
+        "web/src/thumbnail.ts",
         "web/src/timerender.ts",
         "web/src/tippyjs.ts",
-        "web/src/todo_widget.js",
+        "web/src/todo_widget.ts",
         "web/src/topic_list.ts",
         "web/src/topic_popover.js",
         "web/src/tutorial.js",
-        "web/src/types.ts",
         "web/src/typing.ts",
         "web/src/typing_events.ts",
         "web/src/ui_init.js",
@@ -270,16 +274,16 @@ EXEMPT_FILES = make_set(
         "web/src/user_deactivation_ui.ts",
         "web/src/user_events.js",
         "web/src/user_group_components.ts",
-        "web/src/user_group_create.js",
+        "web/src/user_group_create.ts",
         "web/src/user_group_create_members.ts",
         "web/src/user_group_create_members_data.ts",
         "web/src/user_group_edit.js",
-        "web/src/user_group_edit_members.js",
+        "web/src/user_group_edit_members.ts",
         "web/src/user_group_popover.ts",
         "web/src/user_group_ui_updates.js",
         "web/src/user_groups.ts",
         "web/src/user_pill.ts",
-        "web/src/user_profile.js",
+        "web/src/user_profile.ts",
         "web/src/user_settings.ts",
         "web/src/user_sort.ts",
         "web/src/user_status.ts",
@@ -373,7 +377,7 @@ def clean_file(orig_fn: str) -> str:
     return fn
 
 
-def clean_files(fns: List[str]) -> List[str]:
+def clean_files(fns: list[str]) -> list[str]:
     cleaned_files = [clean_file(fn) for fn in fns]
     return cleaned_files
 
@@ -439,7 +443,7 @@ def run_tests_via_node_js() -> int:
 
 
 def check_line_coverage(
-    fn: str, line_coverage: Dict[Any, Any], line_mapping: Dict[Any, Any], log: bool = True
+    fn: str, line_coverage: dict[Any, Any], line_mapping: dict[Any, Any], log: bool = True
 ) -> bool:
     missing_lines = []
     for line in line_coverage:

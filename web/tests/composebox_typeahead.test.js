@@ -50,6 +50,7 @@ const typeahead_helper = zrequire("typeahead_helper");
 const muted_users = zrequire("muted_users");
 const people = zrequire("people");
 const user_groups = zrequire("user_groups");
+const user_pill = zrequire("user_pill");
 const stream_data = zrequire("stream_data");
 const stream_list_sort = zrequire("stream_list_sort");
 const compose_pm_pill = zrequire("compose_pm_pill");
@@ -58,11 +59,6 @@ const composebox_typeahead = zrequire("composebox_typeahead");
 const settings_config = zrequire("settings_config");
 
 const ct = composebox_typeahead;
-
-// Use a slightly larger value than what's user-facing
-// to facilitate testing different combinations of
-// broadcast-mentions/persons/groups.
-ct.__Rewire__("max_num_items", 15);
 
 function user_item(user) {
     return {type: "user", user};
@@ -432,6 +428,7 @@ const hamletcharacters = user_group_item({
     members: new Set([100, 104]),
     is_system_group: false,
     direct_subgroup_ids: new Set([]),
+    can_manage_group: 2,
     can_mention_group: 2,
 });
 
@@ -442,6 +439,7 @@ const backend = user_group_item({
     members: new Set([101]),
     is_system_group: false,
     direct_subgroup_ids: new Set([1]),
+    can_manage_group: 1,
     can_mention_group: 1,
 });
 
@@ -452,6 +450,7 @@ const call_center = user_group_item({
     members: new Set([102]),
     is_system_group: false,
     direct_subgroup_ids: new Set([]),
+    can_manage_group: 2,
     can_mention_group: 2,
 });
 
@@ -459,6 +458,7 @@ const make_emoji = (emoji_dict) => ({
     emoji_name: emoji_dict.name,
     emoji_code: emoji_dict.emoji_code,
     reaction_type: "unicode_emoji",
+    is_realm_emoji: false,
     type: "emoji",
 });
 
@@ -850,7 +850,7 @@ test("initialize", ({override, override_rewire, mock_template}) => {
         onPillCreate() {},
         onPillRemove() {},
         appendValidatedData(item) {
-            appended_names.push(item.display_value);
+            appended_names.push(user_pill.get_display_value_from_item(item));
         },
     }));
     compose_pm_pill.initialize({
@@ -1134,9 +1134,9 @@ test("initialize", ({override, override_rewire, mock_template}) => {
                 actual_value = options.highlighter_html(othello_item);
                 expected_value =
                     `    <span class="user_circle_empty user_circle"></span>\n` +
-                    `    <img class="typeahead-image" src="http://zulip.zulipdev.com/avatar/${othello.user_id}?s&#x3D;50" />\n` +
+                    `    <img class="typeahead-image" src="/avatar/${othello.user_id}" />\n` +
                     '<div class="typeahead-text-container">\n' +
-                    '    <strong class="typeahead-strong-section">Othello, the Moor of Venice</strong>    <small class="autocomplete_secondary">othello@zulip.com</small>\n' +
+                    '    <strong class="typeahead-strong-section">Othello, the Moor of Venice</strong>    <span class="autocomplete_secondary">othello@zulip.com</span>' +
                     "</div>\n";
                 assert.equal(actual_value, expected_value);
                 // Reset the email such that this does not affect further tests.
@@ -1148,7 +1148,7 @@ test("initialize", ({override, override_rewire, mock_template}) => {
                 expected_value =
                     '    <i class="typeahead-image zulip-icon zulip-icon-triple-users no-presence-circle" aria-hidden="true"></i>\n' +
                     '<div class="typeahead-text-container">\n' +
-                    '    <strong class="typeahead-strong-section">hamletcharacters</strong>    <small class="autocomplete_secondary">Characters of Hamlet</small>\n' +
+                    '    <strong class="typeahead-strong-section">hamletcharacters</strong>    <span class="autocomplete_secondary">Characters of Hamlet</span>' +
                     "</div>\n";
                 assert.equal(actual_value, expected_value);
 

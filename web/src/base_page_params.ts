@@ -43,13 +43,13 @@ const home_params_schema = default_params_schema
         narrow: z.optional(z.array(narrow_term_schema)),
         narrow_stream: z.optional(z.string()),
         narrow_topic: z.optional(z.string()),
-        needs_tutorial: z.boolean(),
         promote_sponsoring_zulip: z.boolean(),
         // `realm_rendered_description` is only sent for spectators, because
         // it isn't displayed for logged-in users and requires markdown
         // processor time to compute.
         realm_rendered_description: z.optional(z.string()),
         show_billing: z.boolean(),
+        show_remote_billing: z.boolean(),
         show_plans: z.boolean(),
         show_webathena: z.boolean(),
         sponsorship_pending: z.boolean(),
@@ -72,7 +72,21 @@ const stats_params_schema = default_params_schema.extend({
 // Sync this with corporate.views.portico.team_view.
 const team_params_schema = default_params_schema.extend({
     page_type: z.literal("team"),
-    contributors: z.unknown(),
+    contributors: z.optional(
+        z.array(
+            z
+                .object({
+                    avatar: z.string(),
+                    github_username: z.optional(z.string()),
+                    email: z.optional(z.string()),
+                    name: z.optional(z.string()),
+                })
+                // Repository names may change or increase over time,
+                // so we use this to parse the contributions of the user in
+                // the given repository instead of typing every name.
+                .catchall(z.number()),
+        ),
+    ),
 });
 
 // Sync this with corporate.lib.stripe.UpgradePageParams.

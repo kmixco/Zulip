@@ -1,12 +1,14 @@
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Dict, List, Literal, Union
+from typing import Annotated, Any, Concatenate, Literal
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.utils.translation import gettext as _
 from pydantic import BaseModel, ConfigDict
-from typing_extensions import Annotated, Concatenate, ParamSpec
+from typing_extensions import ParamSpec
 
 from zerver.lib.addressee import get_user_profiles_by_ids
 from zerver.lib.exceptions import JsonableError, ResourceNotFoundError
@@ -16,7 +18,7 @@ from zerver.lib.streams import access_stream_by_id
 from zerver.lib.timestamp import timestamp_to_datetime
 from zerver.lib.typed_endpoint import RequiredStringConstraint
 from zerver.models import Draft, UserProfile
-from zerver.tornado.django_api import send_event
+from zerver.tornado.django_api import send_event_on_commit
 
 ParamT = ParamSpec("ParamT")
 
@@ -25,15 +27,15 @@ class DraftData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["private", "stream", ""]
-    to: List[int]
+    to: list[int]
     topic: str
     content: Annotated[str, RequiredStringConstraint()]
-    timestamp: Union[int, float, None] = None
+    timestamp: int | float | None = None
 
 
 def further_validated_draft_dict(
     draft_dict: DraftData, user_profile: UserProfile
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Take a DraftData object that was already validated by the @typed_endpoint
     decorator then further sanitize, validate, and transform it.
     Ultimately return this "further validated" draft dict.
@@ -96,7 +98,7 @@ def draft_endpoint(
     return draft_view_func
 
 
-def do_create_drafts(drafts: List[DraftData], user_profile: UserProfile) -> List[Draft]:
+def do_create_drafts(drafts: list[DraftData], user_profile: UserProfile) -> list[Draft]:
     """Create drafts in bulk for a given user based on the DraftData objects. Since
     currently, the only place this method is being used (apart from tests) is from
     the create_draft view, we assume that these are syntactically valid
@@ -114,14 +116,15 @@ def do_create_drafts(drafts: List[DraftData], user_profile: UserProfile) -> List
             )
         )
 
-    created_draft_objects = Draft.objects.bulk_create(draft_objects)
+    with transaction.atomic(durable=True):
+        created_draft_objects = Draft.objects.bulk_create(draft_objects)
 
-    event = {
-        "type": "drafts",
-        "op": "add",
-        "drafts": [draft.to_dict() for draft in created_draft_objects],
-    }
-    send_event(user_profile.realm, event, [user_profile.id])
+        event = {
+            "type": "drafts",
+            "op": "add",
+            "drafts": [draft.to_dict() for draft in created_draft_objects],
+        }
+        send_event_on_commit(user_profile.realm, event, [user_profile.id])
 
     return created_draft_objects
 
@@ -139,12 +142,15 @@ def do_edit_draft(draft_id: int, draft: DraftData, user_profile: UserProfile) ->
     draft_object.topic = valid_draft_dict["topic"]
     draft_object.recipient_id = valid_draft_dict["recipient_id"]
     draft_object.last_edit_time = valid_draft_dict["last_edit_time"]
-    draft_object.save()
 
-    event = {"type": "drafts", "op": "update", "draft": draft_object.to_dict()}
-    send_event(user_profile.realm, event, [user_profile.id])
+    with transaction.atomic(durable=True):
+        draft_object.save()
+
+        event = {"type": "drafts", "op": "update", "draft": draft_object.to_dict()}
+        send_event_on_commit(user_profile.realm, event, [user_profile.id])
 
 
+@transaction.atomic(durable=True)
 def do_delete_draft(draft_id: int, user_profile: UserProfile) -> None:
     """Delete a draft belonging to a particular user."""
     try:
@@ -156,4 +162,4 @@ def do_delete_draft(draft_id: int, user_profile: UserProfile) -> None:
     draft_object.delete()
 
     event = {"type": "drafts", "op": "remove", "draft_id": draft_id}
-    send_event(user_profile.realm, event, [user_profile.id])
+    send_event_on_commit(user_profile.realm, event, [user_profile.id])

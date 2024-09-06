@@ -248,7 +248,7 @@ export function validate_group_settings_hash(hash: string): string {
     const hash_components = hash.slice(1).split(/\//);
     const section = hash_components[1];
 
-    const can_create_groups = settings_data.user_can_edit_user_groups();
+    const can_create_groups = settings_data.user_can_create_user_groups();
     if (section === "new" && !can_create_groups) {
         return "#groups/your";
     }
@@ -284,4 +284,38 @@ export function validate_group_settings_hash(hash: string): string {
         return "#groups/your";
     }
     return hash;
+}
+
+export function decode_stream_topic_from_url(
+    url_str: string,
+): {stream_name: string; topic_name?: string} | null {
+    try {
+        const url = new URL(url_str);
+        if (url.origin !== window.location.origin || !url.hash.startsWith("#narrow")) {
+            return null;
+        }
+        const terms = parse_narrow(url.hash.split(/\//));
+        if (terms === undefined) {
+            return null;
+        }
+        if (terms.length > 2) {
+            // The link should only contain stream and topic,
+            // near/ links are not transformed.
+            return null;
+        }
+        // This check is important as a malformed url
+        // may have `stream` / `channel`, `topic` or `near:` in a wrong order
+        if (terms[0]?.operator !== "stream" && terms[0]?.operator !== "channel") {
+            return null;
+        }
+        if (terms.length === 1) {
+            return {stream_name: terms[0].operand};
+        }
+        if (terms[1]?.operator !== "topic") {
+            return null;
+        }
+        return {stream_name: terms[0].operand, topic_name: terms[1].operand};
+    } catch {
+        return null;
+    }
 }

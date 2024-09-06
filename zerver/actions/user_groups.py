@@ -1,5 +1,6 @@
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Dict, List, Mapping, Optional, Sequence, TypedDict, Union
+from typing import TypedDict
 
 import django.db.utils
 from django.db import transaction
@@ -25,7 +26,7 @@ from zerver.models import (
 )
 from zerver.models.groups import SystemGroups
 from zerver.models.users import active_user_ids
-from zerver.tornado.django_api import send_event, send_event_on_commit
+from zerver.tornado.django_api import send_event_on_commit
 
 
 class MemberGroupUserDict(TypedDict):
@@ -34,13 +35,13 @@ class MemberGroupUserDict(TypedDict):
     date_joined: datetime
 
 
-@transaction.atomic
+@transaction.atomic(savepoint=False)
 def create_user_group_in_database(
     name: str,
-    members: List[UserProfile],
+    members: list[UserProfile],
     realm: Realm,
     *,
-    acting_user: Optional[UserProfile],
+    acting_user: UserProfile | None,
     description: str = "",
     group_settings_map: Mapping[str, UserGroup] = {},
     is_system_group: bool = False,
@@ -92,7 +93,7 @@ def create_user_group_in_database(
 
 @transaction.atomic(savepoint=False)
 def update_users_in_full_members_system_group(
-    realm: Realm, affected_user_ids: Sequence[int] = [], *, acting_user: Optional[UserProfile]
+    realm: Realm, affected_user_ids: Sequence[int] = [], *, acting_user: UserProfile | None
 ) -> None:
     full_members_system_group = NamedUserGroup.objects.get(
         realm=realm, name=SystemGroups.FULL_MEMBERS, is_system_group=True
@@ -101,8 +102,8 @@ def update_users_in_full_members_system_group(
         realm=realm, name=SystemGroups.MEMBERS, is_system_group=True
     )
 
-    full_member_group_users: List[MemberGroupUserDict] = list()
-    member_group_users: List[MemberGroupUserDict] = list()
+    full_member_group_users: list[MemberGroupUserDict] = list()
+    member_group_users: list[MemberGroupUserDict] = list()
 
     if affected_user_ids:
         full_member_group_users = list(
@@ -165,7 +166,7 @@ def promote_new_full_members() -> None:
 
 def do_send_create_user_group_event(
     user_group: NamedUserGroup,
-    members: List[UserProfile],
+    members: list[UserProfile],
     direct_subgroups: Sequence[UserGroup] = [],
 ) -> None:
     event = dict(
@@ -178,20 +179,21 @@ def do_send_create_user_group_event(
             id=user_group.id,
             is_system_group=user_group.is_system_group,
             direct_subgroup_ids=[direct_subgroup.id for direct_subgroup in direct_subgroups],
+            can_manage_group=get_group_setting_value_for_api(user_group.can_manage_group),
             can_mention_group=get_group_setting_value_for_api(user_group.can_mention_group),
         ),
     )
-    send_event(user_group.realm, event, active_user_ids(user_group.realm_id))
+    send_event_on_commit(user_group.realm, event, active_user_ids(user_group.realm_id))
 
 
 def check_add_user_group(
     realm: Realm,
     name: str,
-    initial_members: List[UserProfile],
+    initial_members: list[UserProfile],
     description: str = "",
     group_settings_map: Mapping[str, UserGroup] = {},
     *,
-    acting_user: Optional[UserProfile],
+    acting_user: UserProfile | None,
 ) -> NamedUserGroup:
     try:
         user_group = create_user_group_in_database(
@@ -209,15 +211,15 @@ def check_add_user_group(
 
 
 def do_send_user_group_update_event(
-    user_group: NamedUserGroup, data: Dict[str, Union[str, int, AnonymousSettingGroupDict]]
+    user_group: NamedUserGroup, data: dict[str, str | int | AnonymousSettingGroupDict]
 ) -> None:
     event = dict(type="user_group", op="update", group_id=user_group.id, data=data)
-    send_event(user_group.realm, event, active_user_ids(user_group.realm_id))
+    send_event_on_commit(user_group.realm, event, active_user_ids(user_group.realm_id))
 
 
 @transaction.atomic(savepoint=False)
 def do_update_user_group_name(
-    user_group: NamedUserGroup, name: str, *, acting_user: Optional[UserProfile]
+    user_group: NamedUserGroup, name: str, *, acting_user: UserProfile | None
 ) -> None:
     try:
         old_value = user_group.name
@@ -241,7 +243,7 @@ def do_update_user_group_name(
 
 @transaction.atomic(savepoint=False)
 def do_update_user_group_description(
-    user_group: NamedUserGroup, description: str, *, acting_user: Optional[UserProfile]
+    user_group: NamedUserGroup, description: str, *, acting_user: UserProfile | None
 ) -> None:
     old_value = user_group.description
     user_group.description = description
@@ -261,7 +263,7 @@ def do_update_user_group_description(
 
 
 def do_send_user_group_members_update_event(
-    event_name: str, user_group: NamedUserGroup, user_ids: List[int]
+    event_name: str, user_group: NamedUserGroup, user_ids: list[int]
 ) -> None:
     event = dict(type="user_group", op=event_name, group_id=user_group.id, user_ids=user_ids)
     send_event_on_commit(user_group.realm, event, active_user_ids(user_group.realm_id))
@@ -269,10 +271,10 @@ def do_send_user_group_members_update_event(
 
 @transaction.atomic(savepoint=False)
 def bulk_add_members_to_user_groups(
-    user_groups: List[NamedUserGroup],
-    user_profile_ids: List[int],
+    user_groups: list[NamedUserGroup],
+    user_profile_ids: list[int],
     *,
-    acting_user: Optional[UserProfile],
+    acting_user: UserProfile | None,
 ) -> None:
     # All intended callers of this function involve a single user
     # being added to one or more groups, or many users being added to
@@ -305,10 +307,10 @@ def bulk_add_members_to_user_groups(
 
 @transaction.atomic(savepoint=False)
 def bulk_remove_members_from_user_groups(
-    user_groups: List[NamedUserGroup],
-    user_profile_ids: List[int],
+    user_groups: list[NamedUserGroup],
+    user_profile_ids: list[int],
     *,
-    acting_user: Optional[UserProfile],
+    acting_user: UserProfile | None,
 ) -> None:
     # All intended callers of this function involve a single user
     # being added to one or more groups, or many users being added to
@@ -337,7 +339,7 @@ def bulk_remove_members_from_user_groups(
 
 
 def do_send_subgroups_update_event(
-    event_name: str, user_group: NamedUserGroup, subgroup_ids: List[int]
+    event_name: str, user_group: NamedUserGroup, subgroup_ids: list[int]
 ) -> None:
     event = dict(
         type="user_group", op=event_name, group_id=user_group.id, direct_subgroup_ids=subgroup_ids
@@ -348,9 +350,9 @@ def do_send_subgroups_update_event(
 @transaction.atomic
 def add_subgroups_to_user_group(
     user_group: NamedUserGroup,
-    subgroups: List[NamedUserGroup],
+    subgroups: list[NamedUserGroup],
     *,
-    acting_user: Optional[UserProfile],
+    acting_user: UserProfile | None,
 ) -> None:
     group_memberships = [
         GroupGroupMembership(supergroup=user_group, subgroup=subgroup) for subgroup in subgroups
@@ -388,9 +390,9 @@ def add_subgroups_to_user_group(
 @transaction.atomic
 def remove_subgroups_from_user_group(
     user_group: NamedUserGroup,
-    subgroups: List[NamedUserGroup],
+    subgroups: list[NamedUserGroup],
     *,
-    acting_user: Optional[UserProfile],
+    acting_user: UserProfile | None,
 ) -> None:
     GroupGroupMembership.objects.filter(supergroup=user_group, subgroup__in=subgroups).delete()
 
@@ -424,7 +426,7 @@ def remove_subgroups_from_user_group(
 
 def do_send_delete_user_group_event(realm: Realm, user_group_id: int, realm_id: int) -> None:
     event = dict(type="user_group", op="remove", group_id=user_group_id)
-    send_event(realm, event, active_user_ids(realm_id))
+    send_event_on_commit(realm, event, active_user_ids(realm_id))
 
 
 def check_delete_user_group(user_group: NamedUserGroup, *, acting_user: UserProfile) -> None:
@@ -439,13 +441,19 @@ def do_change_user_group_permission_setting(
     setting_name: str,
     setting_value_group: UserGroup,
     *,
-    old_setting_api_value: Union[int, AnonymousSettingGroupDict],
-    acting_user: Optional[UserProfile],
+    old_setting_api_value: int | AnonymousSettingGroupDict | None = None,
+    acting_user: UserProfile | None,
 ) -> None:
     old_value = getattr(user_group, setting_name)
     setattr(user_group, setting_name, setting_value_group)
     user_group.save()
 
+    if old_setting_api_value is None:
+        # Most production callers will have computed this as part of
+        # verifying whether there's an actual change to make, but it
+        # feels quite clumsy to have to pass it from unit tests, so we
+        # compute it here if not provided by the caller.
+        old_setting_api_value = get_group_setting_value_for_api(old_value)
     new_setting_api_value = get_group_setting_value_for_api(setting_value_group)
 
     if not hasattr(old_value, "named_user_group") and hasattr(
@@ -475,7 +483,7 @@ def do_change_user_group_permission_setting(
         },
     )
 
-    event_data_dict: Dict[str, Union[str, int, AnonymousSettingGroupDict]] = {
+    event_data_dict: dict[str, str | int | AnonymousSettingGroupDict] = {
         setting_name: new_setting_api_value
     }
     do_send_user_group_update_event(user_group, event_data_dict)

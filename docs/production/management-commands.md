@@ -5,6 +5,9 @@ line. To help with this, Zulip ships with over 100 command-line tools
 implemented using the [Django management commands
 framework][django-management].
 
+Because management commands require server shell access, Zulip Cloud
+users will need to contact support for situations requiring them.
+
 ## Running management commands
 
 Start by logging in as the `zulip` user on the Zulip server. Then run
@@ -54,14 +57,14 @@ unlikely to ever need to interact with that realm.)
 Unless you are
 [hosting multiple organizations on your Zulip server](multiple-organizations.md),
 your single Zulip organization on the root domain will have the empty
-string (`''`) as its `string_id`. So you can run e.g.:
+string (`''`) as its `string_id`. So you can run, for example:
 
 ```console
 zulip@zulip:~$ /home/zulip/deployments/current/manage.py show_admins -r ''
 ```
 
 Otherwise, the `string_id` will correspond to the organization's
-subdomain. E.g. on `it.zulip.example.com`, use
+subdomain. E.g., on `it.zulip.example.com`, use
 `/home/zulip/deployments/current/manage.py show_admins -r it`.
 
 ## manage.py shell
@@ -126,7 +129,7 @@ There are dozens of useful management commands under
   export tools](export-and-import.md) containing just
   the messages accessible by a single user.
 - `./manage.py unarchive_channel`:
-  [Reactivates](https://zulip.com/help/archive-a-stream#unarchiving-archived-streams)
+  [Reactivates](https://zulip.com/help/archive-a-channel#unarchiving-archived-channels)
   an archived channel.
 - `./manage.py reactivate_realm`: Reactivates a realm.
 - `./manage.py deactivate_user`: Deactivates a user. This can be done

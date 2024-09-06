@@ -157,9 +157,14 @@ test_policy(
     settings_data.user_can_move_messages_between_streams,
 );
 test_policy(
-    "user_can_edit_user_groups",
+    "user_can_create_user_groups",
     "realm_user_group_edit_policy",
-    settings_data.user_can_edit_user_groups,
+    settings_data.user_can_create_user_groups,
+);
+test_policy(
+    "user_can_edit_all_user_groups",
+    "realm_user_group_edit_policy",
+    settings_data.user_can_edit_all_user_groups,
 );
 test_policy(
     "user_can_add_custom_emoji",
@@ -227,6 +232,11 @@ run_test("user_can_move_messages_between_streams_nobody_case", () => {
     assert.equal(settings_data.user_can_move_messages_between_streams(), false);
 });
 
+test_realm_group_settings(
+    "realm_can_delete_any_message_group",
+    settings_data.user_can_delete_any_message,
+);
+
 test_message_policy(
     "user_can_delete_own_message",
     "realm_delete_own_message_policy",
@@ -263,52 +273,6 @@ run_test("user_can_invite_others_to_realm_nobody_case", () => {
     assert.equal(settings_data.user_can_invite_users_by_email(), false);
 });
 
-run_test("user_can_create_web_public_streams", () => {
-    current_user.is_owner = true;
-    realm.server_web_public_streams_enabled = true;
-    realm.realm_enable_spectator_access = true;
-    realm.realm_create_web_public_stream_policy =
-        settings_config.create_web_public_stream_policy_values.nobody.code;
-    assert.equal(settings_data.user_can_create_web_public_streams(), false);
-
-    realm.realm_create_web_public_stream_policy =
-        settings_config.create_web_public_stream_policy_values.by_owners_only.code;
-    assert.equal(settings_data.user_can_create_web_public_streams(), true);
-
-    realm.realm_enable_spectator_access = false;
-    realm.server_web_public_streams_enabled = true;
-    assert.equal(settings_data.user_can_create_web_public_streams(), false);
-
-    realm.realm_enable_spectator_access = true;
-    realm.server_web_public_streams_enabled = false;
-    assert.equal(settings_data.user_can_create_web_public_streams(), false);
-
-    realm.realm_enable_spectator_access = false;
-    realm.server_web_public_streams_enabled = false;
-    assert.equal(settings_data.user_can_create_web_public_streams(), false);
-
-    realm.realm_enable_spectator_access = true;
-    realm.server_web_public_streams_enabled = true;
-    current_user.is_owner = false;
-    current_user.is_admin = true;
-    assert.equal(settings_data.user_can_create_web_public_streams(), false);
-
-    realm.realm_create_web_public_stream_policy =
-        settings_config.create_web_public_stream_policy_values.by_admins_only.code;
-    assert.equal(settings_data.user_can_create_web_public_streams(), true);
-
-    current_user.is_admin = false;
-    current_user.is_moderator = true;
-    assert.equal(settings_data.user_can_create_web_public_streams(), false);
-
-    realm.realm_create_web_public_stream_policy =
-        settings_config.create_web_public_stream_policy_values.by_moderators_only.code;
-    assert.equal(settings_data.user_can_create_web_public_streams(), true);
-
-    current_user.is_moderator = false;
-    assert.equal(settings_data.user_can_create_web_public_streams(), false);
-});
-
 run_test("user_email_not_configured", () => {
     const user_email_not_configured = settings_data.user_email_not_configured;
 
@@ -323,85 +287,144 @@ run_test("user_email_not_configured", () => {
     assert.equal(user_email_not_configured(), false);
 });
 
-function test_realm_group_settings(label, setting_name, validation_func) {
-    run_test(label, () => {
-        const admin_user_id = 1;
-        const moderator_user_id = 2;
-        const member_user_id = 3;
+function test_realm_group_settings(setting_name, validation_func) {
+    const admin_user_id = 1;
+    const moderator_user_id = 2;
+    const member_user_id = 3;
 
-        const admins = {
-            name: "Admins",
-            id: 1,
-            members: new Set([admin_user_id]),
-            is_system_group: true,
-            direct_subgroup_ids: new Set([]),
-        };
-        const moderators = {
-            name: "Moderators",
-            id: 2,
-            members: new Set([moderator_user_id]),
-            is_system_group: true,
-            direct_subgroup_ids: new Set([1]),
-        };
+    const admins = {
+        name: "Admins",
+        id: 1,
+        members: new Set([admin_user_id]),
+        is_system_group: true,
+        direct_subgroup_ids: new Set([]),
+    };
+    const moderators = {
+        name: "Moderators",
+        id: 2,
+        members: new Set([moderator_user_id]),
+        is_system_group: true,
+        direct_subgroup_ids: new Set([1]),
+    };
 
-        user_groups.initialize({realm_user_groups: [admins, moderators]});
-        page_params.is_spectator = true;
-        assert.equal(validation_func(), false);
+    user_groups.initialize({realm_user_groups: [admins, moderators]});
+    page_params.is_spectator = true;
+    assert.equal(validation_func(), false);
 
-        page_params.is_spectator = false;
-        realm[setting_name] = 1;
-        current_user.user_id = admin_user_id;
-        assert.equal(validation_func(), true);
+    page_params.is_spectator = false;
+    realm[setting_name] = 1;
+    current_user.user_id = admin_user_id;
+    assert.equal(validation_func(), true);
 
-        current_user.user_id = moderator_user_id;
-        assert.equal(validation_func(), false);
+    current_user.user_id = moderator_user_id;
+    assert.equal(validation_func(), false);
 
-        realm[setting_name] = 2;
-        current_user.user_id = moderator_user_id;
-        assert.equal(validation_func(), true);
+    realm[setting_name] = 2;
+    current_user.user_id = moderator_user_id;
+    assert.equal(validation_func(), true);
 
-        current_user.user_id = member_user_id;
-        assert.equal(validation_func(), false);
-    });
+    current_user.user_id = member_user_id;
+    assert.equal(validation_func(), false);
 }
 
-test_realm_group_settings(
-    "user_can_create_multiuse_invite",
-    "realm_create_multiuse_invite_group",
-    settings_data.user_can_create_multiuse_invite,
-);
+run_test("user_can_create_multiuse_invite", () => {
+    test_realm_group_settings(
+        "realm_create_multiuse_invite_group",
+        settings_data.user_can_create_multiuse_invite,
+    );
+});
 
 run_test("can_edit_user_group", () => {
+    const admins = {
+        description: "Administrators",
+        name: "role:administrators",
+        id: 1,
+        members: new Set([1]),
+        is_system_group: true,
+        direct_subgroup_ids: new Set([]),
+        can_manage_group: 4,
+        can_mention_group: 1,
+    };
+    const moderators = {
+        description: "Moderators",
+        name: "role:moderators",
+        id: 2,
+        members: new Set([2]),
+        is_system_group: true,
+        direct_subgroup_ids: new Set([1]),
+        can_manage_group: 4,
+        can_mention_group: 1,
+    };
+    const members = {
+        description: "Members",
+        name: "role:members",
+        id: 3,
+        members: new Set([3]),
+        is_system_group: true,
+        direct_subgroup_ids: new Set([1, 2]),
+        can_manage_group: 4,
+        can_mention_group: 4,
+    };
+    const nobody = {
+        description: "Nobody",
+        name: "role:nobody",
+        id: 4,
+        members: new Set([]),
+        is_system_group: true,
+        direct_subgroup_ids: new Set([]),
+        can_manage_group: 4,
+        can_mention_group: 2,
+    };
     const students = {
         description: "Students group",
         name: "Students",
-        id: 0,
+        id: 5,
         members: new Set([1, 2]),
         is_system_group: false,
         direct_subgroup_ids: new Set([4, 5]),
-        can_mention_group: 2,
+        can_manage_group: 4,
+        can_mention_group: 3,
     };
     user_groups.initialize({
-        realm_user_groups: [students],
+        realm_user_groups: [admins, moderators, members, nobody, students],
     });
 
     page_params.is_spectator = true;
     assert.ok(!settings_data.can_edit_user_group(students.id));
 
     page_params.is_spectator = false;
+    realm.realm_user_group_edit_policy = settings_config.common_policy_values.by_admins_only.code;
     current_user.user_id = 3;
-    current_user.is_guest = true;
     assert.ok(!settings_data.can_edit_user_group(students.id));
 
-    current_user.is_guest = false;
-    current_user.is_moderator = true;
+    current_user.is_admin = true;
     assert.ok(settings_data.can_edit_user_group(students.id));
 
+    current_user.is_admin = false;
+    current_user.is_moderator = true;
+    assert.ok(!settings_data.can_edit_user_group(students.id));
+
+    realm.realm_user_group_edit_policy = settings_config.common_policy_values.by_members.code;
     current_user.is_moderator = false;
+    current_user.is_guest = false;
     assert.ok(!settings_data.can_edit_user_group(students.id));
 
     current_user.user_id = 2;
-    realm.realm_waiting_period_threshold = 0;
+    assert.ok(settings_data.can_edit_user_group(students.id));
+
+    realm.realm_user_group_edit_policy = settings_config.common_policy_values.by_admins_only.code;
+    assert.ok(!settings_data.can_edit_user_group(students.id));
+
+    const event = {
+        group_id: students.id,
+        data: {
+            can_manage_group: members.id,
+        },
+    };
+    user_groups.update(event);
+    assert.ok(settings_data.can_edit_user_group(students.id));
+
+    current_user.user_id = 3;
     assert.ok(settings_data.can_edit_user_group(students.id));
 });
 
@@ -461,14 +484,53 @@ run_test("user_can_access_all_other_users", () => {
     assert.ok(settings_data.user_can_access_all_other_users());
 });
 
-test_realm_group_settings(
-    "user_can_create_public_streams",
-    "realm_can_create_public_channel_group",
-    settings_data.user_can_create_public_streams,
-);
+run_test("user_can_create_public_streams", () => {
+    test_realm_group_settings(
+        "realm_can_create_public_channel_group",
+        settings_data.user_can_create_public_streams,
+    );
+});
 
-test_realm_group_settings(
-    "user_can_create_private_streams",
-    "realm_can_create_private_channel_group",
-    settings_data.user_can_create_private_streams,
-);
+run_test("user_can_create_private_streams", () => {
+    test_realm_group_settings(
+        "realm_can_create_private_channel_group",
+        settings_data.user_can_create_private_streams,
+    );
+});
+
+run_test("user_can_create_web_public_streams", () => {
+    realm.server_web_public_streams_enabled = true;
+    realm.realm_enable_spectator_access = true;
+
+    test_realm_group_settings(
+        "realm_can_create_web_public_channel_group",
+        settings_data.user_can_create_web_public_streams,
+    );
+    const owner_user_id = 4;
+    const owners = {
+        name: "Admins",
+        id: 3,
+        members: new Set([owner_user_id]),
+        is_system_group: true,
+        direct_subgroup_ids: new Set([]),
+    };
+    current_user.user_id = owner_user_id;
+    user_groups.initialize({realm_user_groups: [owners]});
+
+    realm.server_web_public_streams_enabled = true;
+    realm.realm_enable_spectator_access = true;
+    realm.realm_can_create_web_public_channel_group = owners.id;
+    assert.equal(settings_data.user_can_create_web_public_streams(), true);
+
+    realm.realm_enable_spectator_access = false;
+    realm.server_web_public_streams_enabled = true;
+    assert.equal(settings_data.user_can_create_web_public_streams(), false);
+
+    realm.realm_enable_spectator_access = true;
+    realm.server_web_public_streams_enabled = false;
+    assert.equal(settings_data.user_can_create_web_public_streams(), false);
+
+    realm.realm_enable_spectator_access = false;
+    realm.server_web_public_streams_enabled = false;
+    assert.equal(settings_data.user_can_create_web_public_streams(), false);
+});

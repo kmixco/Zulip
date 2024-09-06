@@ -1,8 +1,9 @@
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -41,23 +42,32 @@ class RemoteActivityPlanData:
     rate: str
 
 
+@dataclass
+class ActivityHeaderEntry:
+    name: str
+    value: str | Markup
+
+
 def make_table(
     title: str,
     cols: Sequence[str],
     rows: Sequence[Any],
     *,
-    totals: Optional[Any] = None,
-    stats_link: Optional[Markup] = None,
+    header: list[ActivityHeaderEntry] | None = None,
+    totals: Any | None = None,
+    title_link: Markup | None = None,
     has_row_class: bool = False,
 ) -> str:
     if not has_row_class:
 
-        def fix_row(row: Any) -> Dict[str, Any]:
+        def fix_row(row: Any) -> dict[str, Any]:
             return dict(cells=row, row_class=None)
 
         rows = list(map(fix_row, rows))
 
-    data = dict(title=title, cols=cols, rows=rows, totals=totals, stats_link=stats_link)
+    data = dict(
+        title=title, cols=cols, rows=rows, header=header, totals=totals, title_link=title_link
+    )
 
     content = loader.render_to_string(
         "corporate/activity/activity_table.html",
@@ -68,15 +78,15 @@ def make_table(
 
 
 def fix_rows(
-    rows: List[List[Any]],
+    rows: list[list[Any]],
     i: int,
-    fixup_func: Union[Callable[[str], Markup], Callable[[datetime], str], Callable[[int], int]],
+    fixup_func: Callable[[str], Markup] | Callable[[datetime], str] | Callable[[int], int],
 ) -> None:
     for row in rows:
         row[i] = fixup_func(row[i])
 
 
-def get_query_data(query: Composable) -> List[List[Any]]:
+def get_query_data(query: Composable) -> list[list[Any]]:
     cursor = connection.cursor()
     cursor.execute(query)
     rows = cursor.fetchall()
@@ -85,13 +95,13 @@ def get_query_data(query: Composable) -> List[List[Any]]:
     return rows
 
 
-def dictfetchall(cursor: CursorWrapper) -> List[Dict[str, Any]]:
+def dictfetchall(cursor: CursorWrapper) -> list[dict[str, Any]]:
     """Returns all rows from a cursor as a dict"""
     desc = cursor.description
-    return [dict(zip((col[0] for col in desc), row)) for row in cursor.fetchall()]
+    return [dict(zip((col[0] for col in desc), row, strict=False)) for row in cursor.fetchall()]
 
 
-def format_optional_datetime(date: Optional[datetime], display_none: bool = False) -> str:
+def format_optional_datetime(date: datetime | None, display_none: bool = False) -> str:
     if date:
         return date.strftime("%Y-%m-%d %H:%M")
     elif display_none:
@@ -104,7 +114,7 @@ def format_datetime_as_date(date: datetime) -> str:
     return date.strftime("%Y-%m-%d")
 
 
-def format_none_as_zero(value: Optional[int]) -> int:
+def format_none_as_zero(value: int | None) -> int:
     if value:
         return value
     else:
@@ -130,6 +140,13 @@ def realm_stats_link(realm_str: str) -> Markup:
 
     url = reverse(stats_for_realm, kwargs=dict(realm_str=realm_str))
     return Markup('<a href="{url}"><i class="fa fa-pie-chart"></i></a>').format(url=url)
+
+
+def user_support_link(email: str) -> Markup:
+    support_url = reverse("support")
+    query = urlencode({"q": email})
+    url = append_url_query_string(support_url, query)
+    return Markup('<a href="{url}"><i class="fa fa-gear"></i></a>').format(url=url)
 
 
 def realm_support_link(realm_str: str) -> Markup:
@@ -159,7 +176,7 @@ def remote_installation_support_link(hostname: str) -> Markup:
     return Markup('<a href="{url}"><i class="fa fa-gear"></i></a>').format(url=url)
 
 
-def get_plan_rate_percentage(discount: Optional[str]) -> str:
+def get_plan_rate_percentage(discount: str | None) -> str:
     # CustomerPlan.discount is a string field that stores the discount.
     if discount is None or discount == "0":
         return "100%"
@@ -176,8 +193,8 @@ def get_remote_activity_plan_data(
     plan: CustomerPlan,
     license_ledger: LicenseLedger,
     *,
-    remote_realm: Optional[RemoteRealm] = None,
-    remote_server: Optional[RemoteZulipServer] = None,
+    remote_realm: RemoteRealm | None = None,
+    remote_server: RemoteZulipServer | None = None,
 ) -> RemoteActivityPlanData:
     if plan.tier == CustomerPlan.TIER_SELF_HOSTED_LEGACY or plan.status in (
         CustomerPlan.DOWNGRADE_AT_END_OF_FREE_TRIAL,
@@ -208,7 +225,7 @@ def get_remote_activity_plan_data(
     )
 
 
-def get_estimated_arr_and_rate_by_realm() -> Tuple[Dict[str, int], Dict[str, str]]:  # nocoverage
+def get_estimated_arr_and_rate_by_realm() -> tuple[dict[str, int], dict[str, str]]:  # nocoverage
     # NOTE: Customers without a plan might still have a discount attached to them which
     # are not included in `plan_rate`.
     annual_revenue = {}
@@ -241,8 +258,8 @@ def get_estimated_arr_and_rate_by_realm() -> Tuple[Dict[str, int], Dict[str, str
     return annual_revenue, plan_rate
 
 
-def get_plan_data_by_remote_server() -> Dict[int, RemoteActivityPlanData]:  # nocoverage
-    remote_server_plan_data: Dict[int, RemoteActivityPlanData] = {}
+def get_plan_data_by_remote_server() -> dict[int, RemoteActivityPlanData]:  # nocoverage
+    remote_server_plan_data: dict[int, RemoteActivityPlanData] = {}
     plans = (
         CustomerPlan.objects.filter(
             status__lt=CustomerPlan.LIVE_STATUS_THRESHOLD,
@@ -290,8 +307,8 @@ def get_plan_data_by_remote_server() -> Dict[int, RemoteActivityPlanData]:  # no
     return remote_server_plan_data
 
 
-def get_plan_data_by_remote_realm() -> Dict[int, Dict[int, RemoteActivityPlanData]]:  # nocoverage
-    remote_server_plan_data_by_realm: Dict[int, Dict[int, RemoteActivityPlanData]] = {}
+def get_plan_data_by_remote_realm() -> dict[int, dict[int, RemoteActivityPlanData]]:  # nocoverage
+    remote_server_plan_data_by_realm: dict[int, dict[int, RemoteActivityPlanData]] = {}
     plans = (
         CustomerPlan.objects.filter(
             status__lt=CustomerPlan.LIVE_STATUS_THRESHOLD,
@@ -351,8 +368,8 @@ def get_plan_data_by_remote_realm() -> Dict[int, Dict[int, RemoteActivityPlanDat
 
 def get_remote_realm_user_counts(
     event_time: datetime = timezone_now(),
-) -> Dict[int, RemoteCustomerUserCount]:  # nocoverage
-    user_counts_by_realm: Dict[int, RemoteCustomerUserCount] = {}
+) -> dict[int, RemoteCustomerUserCount]:  # nocoverage
+    user_counts_by_realm: dict[int, RemoteCustomerUserCount] = {}
     for log in (
         RemoteRealmAuditLog.objects.filter(
             event_type__in=RemoteRealmAuditLog.SYNCED_BILLING_EVENTS,
@@ -378,8 +395,8 @@ def get_remote_realm_user_counts(
 
 def get_remote_server_audit_logs(
     event_time: datetime = timezone_now(),
-) -> Dict[int, List[RemoteRealmAuditLog]]:
-    logs_per_server: Dict[int, List[RemoteRealmAuditLog]] = defaultdict(list)
+) -> dict[int, list[RemoteRealmAuditLog]]:
+    logs_per_server: dict[int, list[RemoteRealmAuditLog]] = defaultdict(list)
     for log in (
         RemoteRealmAuditLog.objects.filter(
             event_type__in=RemoteRealmAuditLog.SYNCED_BILLING_EVENTS,

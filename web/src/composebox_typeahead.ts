@@ -6,7 +6,7 @@ import * as typeahead from "../shared/src/typeahead";
 import type {Emoji, EmojiSuggestion} from "../shared/src/typeahead";
 import render_topic_typeahead_hint from "../templates/topic_typeahead_hint.hbs";
 
-import {Typeahead} from "./bootstrap_typeahead";
+import {MAX_ITEMS, Typeahead} from "./bootstrap_typeahead";
 import type {TypeaheadInputElement} from "./bootstrap_typeahead";
 import * as bulleted_numbered_list_util from "./bulleted_numbered_list_util";
 import * as compose_pm_pill from "./compose_pm_pill";
@@ -41,6 +41,7 @@ import type {UserGroup} from "./user_groups";
 import * as user_pill from "./user_pill";
 import type {UserPillData} from "./user_pill";
 import {user_settings} from "./user_settings";
+import * as util from "./util";
 
 // **********************************
 // AN IMPORTANT NOTE ABOUT TYPEAHEADS
@@ -103,9 +104,8 @@ export type TypeaheadSuggestion =
     | EmojiSuggestion
     | SlashCommandSuggestion;
 
-// This is what we use for direct message/compose typeaheads.
 // We export it to allow tests to mock it.
-export const max_num_items = 8;
+export const max_num_items = MAX_ITEMS;
 
 export let emoji_collection: Emoji[] = [];
 
@@ -251,7 +251,7 @@ function handle_bulleting_or_numbering(
         if (bulleted_numbered_list_util.strip_bullet(previous_line) === "") {
             // below we select and replace the last 2 characters in the textarea before
             // the cursor - the bullet syntax - with an empty string
-            $textarea[0]!.setSelectionRange($textarea.caret() - 2, $textarea.caret());
+            util.the($textarea).setSelectionRange($textarea.caret() - 2, $textarea.caret());
             compose_ui.insert_and_scroll_into_view("", $textarea);
             e.preventDefault();
             return;
@@ -265,7 +265,7 @@ function handle_bulleting_or_numbering(
         if (bulleted_numbered_list_util.strip_numbering(previous_line) === "") {
             // below we select then replaces the last few characters in the textarea before
             // the cursor - the numbering syntax - with an empty string
-            $textarea[0]!.setSelectionRange(
+            util.the($textarea).setSelectionRange(
                 $textarea.caret() - previous_number_string.length - 2,
                 $textarea.caret(),
             );
@@ -298,7 +298,7 @@ export function handle_enter($textarea: JQuery<HTMLTextAreaElement>, e: JQuery.K
 
     // If the selectionStart and selectionEnd are not the same, that
     // means that some text was selected.
-    if ($textarea[0]!.selectionStart !== $textarea[0]!.selectionEnd) {
+    if (util.the($textarea).selectionStart !== util.the($textarea).selectionEnd) {
         // Replace it with the newline, remembering to resize the
         // textarea if needed.
         compose_ui.insert_and_scroll_into_view("\n", $textarea);
@@ -360,7 +360,7 @@ function handle_keydown(
                     e.preventDefault();
                     if (
                         compose_validate.validate_message_length() &&
-                        !$("#compose-send-button").prop("disabled")
+                        !$(".message-send-controls").hasClass("disabled-message-send-controls")
                     ) {
                         on_enter_send();
                     }
@@ -1176,7 +1176,11 @@ export function content_typeahead_selected(
                 $textbox.caret(beginning.length);
                 compose_ui.autosize_textarea($textbox);
             };
-            flatpickr.show_flatpickr(input_element.$element[0]!, on_timestamp_selection, timestamp);
+            flatpickr.show_flatpickr(
+                util.the(input_element.$element),
+                on_timestamp_selection,
+                timestamp,
+            );
             return beginning + rest;
         }
     }
@@ -1239,7 +1243,7 @@ export function initialize_topic_edit_typeahead(
             const stream_id = stream_data.get_stream_id(stream_name);
             return topics_seen_for(stream_id);
         },
-        items: 5,
+        items: max_num_items,
     });
 }
 
@@ -1317,7 +1321,7 @@ export function initialize({
         source(): string[] {
             return topics_seen_for(compose_state.stream_id());
         },
-        items: 3,
+        items: max_num_items,
         highlighter_html(item: string): string {
             return typeahead_helper.render_typeahead_item({primary: item});
         },

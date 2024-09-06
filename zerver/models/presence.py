@@ -1,8 +1,3 @@
-# https://github.com/typeddjango/django-stubs/issues/1698
-# mypy: disable-error-code="explicit-override"
-
-from typing import Optional
-
 from django.db import models
 from django.db.models import CASCADE
 from django.utils.timezone import now as timezone_now
@@ -74,7 +69,7 @@ class UserPresence(models.Model):
         ]
 
     @staticmethod
-    def status_from_string(status: str) -> Optional[int]:
+    def status_from_string(status: str) -> int | None:
         if status == "active":
             return UserPresence.LEGACY_STATUS_ACTIVE_INT
         elif status == "idle":

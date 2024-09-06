@@ -12,23 +12,24 @@ import {$t, $t_html} from "./i18n";
 import * as keydown_util from "./keydown_util";
 import * as markdown from "./markdown";
 import * as overlays from "./overlays";
+import {page_params} from "./page_params";
+import {postprocess_content} from "./postprocess_content";
 import * as rendered_markdown from "./rendered_markdown";
 import * as scroll_util from "./scroll_util";
+import {current_user} from "./state_data";
 import {user_settings} from "./user_settings";
-import * as util from "./util";
 
 // Make it explicit that our toggler is undefined until
 // set_up_toggler is called.
 export let toggler: Toggle | undefined;
 
 function format_usage_html(...keys: string[]): string {
-    const get_formatted_keys: () => string = () => keys.map((key) => `<kbd>${key}</kbd>`).join("+");
     return $t_html(
         {
             defaultMessage: "(or <key-html></key-html>)",
         },
         {
-            "key-html": get_formatted_keys,
+            "key-html": () => keys.map((key) => `<kbd>${key}</kbd>`).join("+"),
         },
     );
 }
@@ -64,12 +65,14 @@ const markdown_help_rows = [
     },
     {
         markdown: "@**Joe Smith**",
-        output_html: '<p><span class="user-mention">@Joe Smith</span></p>',
+        output_html:
+            '<p><span class="user-mention"><span class="mention-content-wrapper">@Joe Smith</span></span></p>',
         effect_html: "(notifies Joe Smith)",
     },
     {
         markdown: "@_**Joe Smith**",
-        output_html: '<p><span class="user-mention">Joe Smith</span></p>',
+        output_html:
+            '<p><span class="user-mention"><span class="mention-content-wrapper">Joe Smith</span></span></p>',
         effect_html: "(links to profile but doesn't notify Joe Smith)",
     },
     {
@@ -84,7 +87,7 @@ const markdown_help_rows = [
         // code for that case works ... but it might be better to just
         // user your own name/user ID anyway.
         output_html:
-            '<p><span class="user-group-mention" data-user-group-id="0">@support team</span></p>',
+            '<p><span class="user-group-mention" data-user-group-id="0"><span class="mention-content-wrapper">@support team</span></span></p>',
         effect_html: "(notifies <b>support team</b> group)",
     },
     {
@@ -157,7 +160,7 @@ def zulip():
     {
         markdown: "<time:2023-05-28T13:30:00+05:30>",
         output_html:
-            '<p><time datetime="2023-05-28T08:00:00Z"><i class="fa fa-clock-o"></i>Sun, May 28, 2023, 1:30 PM</time></p>',
+            '<p><time datetime="2023-05-28T08:00:00Z"><span class="timestamp-content-wrapper"><i class="zulip-icon zulip-icon-clock markdown-timestamp-icon"></i>Sun, May 28, 2023, 1:30 PM</span></time></p>',
     },
     {
         markdown: `/poll What did you drink this morning?
@@ -166,7 +169,7 @@ Tea
 Coffee`,
         output_html: `\
 <div class="poll-widget">
-    <h4 class="poll-question-header reduced-font-size">What did you drink this morning?</h4>
+    <h4 class="poll-question-header">What did you drink this morning?</h4>
     <i class="fa fa-pencil poll-edit-question"></i>
     <ul class="poll-widget">
     <li>
@@ -267,7 +270,7 @@ export function set_up_toggler(): void {
                 raw_content: row.markdown,
                 ...markdown.render(row.markdown),
             };
-            row.output_html = util.clean_user_content_links(message.content);
+            row.output_html = postprocess_content(message.content);
         }
     }
 
@@ -277,7 +280,11 @@ export function set_up_toggler(): void {
     });
     $(".informational-overlays .overlay-body").append($markdown_help);
 
-    const $search_operators = $(render_search_operator());
+    const $search_operators = $(
+        render_search_operator({
+            can_access_all_public_channels: !page_params.is_spectator && !current_user.is_guest,
+        }),
+    );
     $(".informational-overlays .overlay-body").append($search_operators);
 
     const $keyboard_shortcuts = $(render_keyboard_shortcut());

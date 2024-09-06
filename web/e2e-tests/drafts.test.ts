@@ -47,6 +47,7 @@ async function test_restore_stream_message_draft_by_opening_compose_box(page: Pa
     await page.click(".search_icon");
     await page.waitForSelector("#search_query", {visible: true});
     await common.clear_and_type(page, "#search_query", "stream:Denmark topic:tests");
+    await page.keyboard.press("Enter");
     // Wait for narrow to complete.
     const wait_for_change = true;
     await common.get_current_msg_list_id(page, wait_for_change);
@@ -130,7 +131,7 @@ async function test_previously_created_drafts_rendered(page: Page): Promise<void
             page,
             "#drafts_table .overlay-message-row .message_header_private_message .stream_label",
         ),
-        "You and King Hamlet, Cordelia, Lear's daughter",
+        "You and Cordelia, Lear's daughter, King Hamlet",
     );
     assert.strictEqual(
         await common.get_text_from_selector(
@@ -211,7 +212,7 @@ async function test_restore_private_message_draft_via_draft_overlay(page: Page):
         page,
         common.fullname.hamlet,
     );
-    await common.pm_recipient.expect(page, `${hamlet_internal_email},${cordelia_internal_email}`);
+    await common.pm_recipient.expect(page, `${cordelia_internal_email},${hamlet_internal_email}`);
     assert.strictEqual(
         await common.get_text_from_selector(page, "title"),
         "Cordelia, Lear's daughter, King Hamlet - Zulip Dev - Zulip",
@@ -289,9 +290,11 @@ async function test_delete_draft_on_clearing_text(page: Page): Promise<void> {
 async function drafts_test(page: Page): Promise<void> {
     await common.log_in(page);
     await page.click("#left-sidebar-navigation-list .top_left_all_messages");
-    await page.waitForSelector(".message-list .message_row", {visible: true});
-    // Assert that there is only one message list.
-    assert.equal((await page.$$(".message-list")).length, 1);
+    const message_list_id = await common.get_current_msg_list_id(page, true);
+    await page.waitForSelector(
+        `.message-list[data-message-list-id='${message_list_id}'] .message_row`,
+        {visible: true},
+    );
 
     await test_empty_drafts(page);
 

@@ -126,12 +126,12 @@ import * as stream_topic_history from "./stream_topic_history";
 import * as stream_topic_history_util from "./stream_topic_history_util";
 import * as sub_store from "./sub_store";
 import * as theme from "./theme";
+import * as thumbnail from "./thumbnail";
 import * as timerender from "./timerender";
 import * as tippyjs from "./tippyjs";
 import * as topic_list from "./topic_list";
 import * as topic_popover from "./topic_popover";
 import * as transmit from "./transmit";
-import * as tutorial from "./tutorial";
 import * as typeahead_helper from "./typeahead_helper";
 import * as typing from "./typing";
 import * as unread from "./unread";
@@ -191,7 +191,11 @@ function initialize_compose_box() {
 }
 
 function initialize_message_feed_errors() {
-    $("#message_feed_errors_container").html(render_message_feed_errors());
+    $("#message_feed_errors_container").html(
+        render_message_feed_errors({
+            is_guest: current_user.is_guest,
+        }),
+    );
 }
 
 export function initialize_kitchen_sink_stuff() {
@@ -420,13 +424,13 @@ export function initialize_everything(state_data) {
        density is so fundamental, we initialize that first, however. */
     initialize_user_settings(state_data.user_settings);
     sidebar_ui.restore_sidebar_toggle_status();
+    i18n.initialize({language_list: page_params.language_list});
+    timerender.initialize();
     information_density.initialize();
     if (page_params.is_spectator) {
         theme.initialize_theme_for_spectator();
     }
-
-    i18n.initialize({language_list: page_params.language_list});
-    timerender.initialize();
+    thumbnail.initialize();
     widgets.initialize();
     tippyjs.initialize();
     compose_tooltips.initialize();
@@ -548,7 +552,6 @@ export function initialize_everything(state_data) {
                 ],
                 {trigger},
             );
-            activity_ui.build_user_sidebar();
         },
     });
     stream_list_sort.initialize();
@@ -569,7 +572,10 @@ export function initialize_everything(state_data) {
     user_status.initialize(state_data.user_status);
     compose_recipient.initialize();
     compose_pm_pill.initialize({
-        on_pill_create_or_remove: compose_recipient.update_placeholder_text,
+        on_pill_create_or_remove() {
+            compose_recipient.update_placeholder_text();
+            compose_recipient.check_posting_policy_for_compose_box();
+        },
     });
     compose_closed_ui.initialize();
     compose_reply.initialize();
@@ -635,9 +641,6 @@ export function initialize_everything(state_data) {
             );
         },
     });
-    // This needs to happen after activity_ui.initialize, so that user_filter
-    // is defined. Also, must happen after people.initialize()
-    tutorial.initialize();
 
     // All overlays, and also activity_ui, must be initialized before hashchange.js
     hashchange.initialize();
@@ -662,7 +665,9 @@ export function initialize_everything(state_data) {
     });
     drafts.initialize_ui();
     drafts_overlay_ui.initialize();
-    onboarding_steps.initialize(state_data.onboarding_steps);
+    // This needs to happen after activity_ui.initialize, so that user_filter
+    // is defined. Also, must happen after people.initialize()
+    onboarding_steps.initialize(state_data.onboarding_steps, message_view.show);
     typing.initialize();
     starred_messages_ui.initialize();
     user_status_ui.initialize();

@@ -1,7 +1,7 @@
 # See https://zulip.readthedocs.io/en/latest/subsystems/onboarding-steps.html
 # for documentation on this subsystem.
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from django.conf import settings
 
@@ -12,14 +12,25 @@ from zerver.models import OnboardingStep, UserProfile
 class OneTimeNotice:
     name: str
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         return {
             "type": "one_time_notice",
             "name": self.name,
         }
 
 
-ONE_TIME_NOTICES: List[OneTimeNotice] = [
+@dataclass
+class OneTimeAction:
+    name: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "type": "one_time_action",
+            "name": self.name,
+        }
+
+
+ONE_TIME_NOTICES: list[OneTimeNotice] = [
     OneTimeNotice(
         name="visibility_policy_banner",
     ),
@@ -35,17 +46,20 @@ ONE_TIME_NOTICES: List[OneTimeNotice] = [
     OneTimeNotice(
         name="jump_to_conversation_banner",
     ),
+    OneTimeNotice(
+        name="non_interleaved_view_messages_fading",
+    ),
+    OneTimeNotice(
+        name="interleaved_view_messages_fading",
+    ),
 ]
 
-# We may introduce onboarding step of types other than 'one time notice'
-# in future. Earlier, we had 'hotspot' and 'one time notice' as the two
-# types. We can simply do:
-# ALL_ONBOARDING_STEPS: List[Union[OneTimeNotice, OtherType]]
-# to avoid API changes when new type is introduced in the future.
-ALL_ONBOARDING_STEPS: List[OneTimeNotice] = ONE_TIME_NOTICES
+ONE_TIME_ACTIONS = [OneTimeAction(name="narrow_to_dm_with_welcome_bot_new_user")]
+
+ALL_ONBOARDING_STEPS: list[OneTimeNotice | OneTimeAction] = ONE_TIME_NOTICES + ONE_TIME_ACTIONS
 
 
-def get_next_onboarding_steps(user: UserProfile) -> List[Dict[str, Any]]:
+def get_next_onboarding_steps(user: UserProfile) -> list[dict[str, Any]]:
     # If a Zulip server has disabled the tutorial, never send any
     # onboarding steps.
     if not settings.TUTORIAL_ENABLED:
@@ -55,11 +69,11 @@ def get_next_onboarding_steps(user: UserProfile) -> List[Dict[str, Any]]:
         OnboardingStep.objects.filter(user=user).values_list("onboarding_step", flat=True)
     )
 
-    onboarding_steps: List[Dict[str, Any]] = []
-    for one_time_notice in ONE_TIME_NOTICES:
-        if one_time_notice.name in seen_onboarding_steps:
+    onboarding_steps: list[dict[str, Any]] = []
+    for onboarding_step in ALL_ONBOARDING_STEPS:
+        if onboarding_step.name in seen_onboarding_steps:
             continue
-        onboarding_steps.append(one_time_notice.to_dict())
+        onboarding_steps.append(onboarding_step.to_dict())
 
     return onboarding_steps
 
@@ -71,8 +85,3 @@ def copy_onboarding_steps(source_profile: UserProfile, target_profile: UserProfi
             onboarding_step=onboarding_step.onboarding_step,
             timestamp=onboarding_step.timestamp,
         )
-
-    # TODO: The 'tutorial_status' field of 'UserProfile' model
-    # is no longer used. Remove it.
-    target_profile.tutorial_status = source_profile.tutorial_status
-    target_profile.save(update_fields=["tutorial_status"])

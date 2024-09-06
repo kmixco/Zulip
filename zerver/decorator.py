@@ -1,20 +1,10 @@
 import base64
 import logging
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from functools import wraps
 from io import BytesIO
-from typing import (
-    TYPE_CHECKING,
-    Callable,
-    Dict,
-    Optional,
-    Sequence,
-    Tuple,
-    TypeVar,
-    Union,
-    cast,
-    overload,
-)
+from typing import TYPE_CHECKING, Concatenate, TypeVar, cast, overload
 from urllib.parse import urlsplit
 
 import django_otp
@@ -34,7 +24,7 @@ from django.utils.translation import gettext as _
 from django.views.decorators.csrf import csrf_exempt
 from django_otp import user_has_device
 from two_factor.utils import default_device
-from typing_extensions import Concatenate, ParamSpec
+from typing_extensions import ParamSpec
 
 from zerver.context_processors import get_valid_realm_from_request
 from zerver.lib.exceptions import (
@@ -55,10 +45,11 @@ from zerver.lib.exceptions import (
 )
 from zerver.lib.queue import queue_json_publish
 from zerver.lib.rate_limiter import is_local_addr, rate_limit_request_by_ip, rate_limit_user
-from zerver.lib.request import REQ, RequestNotes, has_request_variables
+from zerver.lib.request import RequestNotes
 from zerver.lib.response import json_method_not_allowed
 from zerver.lib.subdomains import get_subdomain, user_matches_subdomain
 from zerver.lib.timestamp import datetime_to_timestamp, timestamp_to_datetime
+from zerver.lib.typed_endpoint import typed_endpoint
 from zerver.lib.users import is_2fa_verified
 from zerver.lib.utils import has_api_key_format
 from zerver.lib.webhooks.common import notify_bot_owner_about_invalid_json
@@ -78,7 +69,7 @@ ReturnT = TypeVar("ReturnT")
 
 
 def update_user_activity(
-    request: HttpRequest, user_profile: UserProfile, query: Optional[str]
+    request: HttpRequest, user_profile: UserProfile, query: str | None
 ) -> None:
     # update_active_status also pushes to RabbitMQ, and it seems
     # redundant to log that here as well.
@@ -205,11 +196,11 @@ def require_billing_access(
 
 def process_client(
     request: HttpRequest,
-    user: Union[UserProfile, AnonymousUser, None] = None,
+    user: UserProfile | AnonymousUser | None = None,
     *,
     is_browser_view: bool = False,
-    client_name: Optional[str] = None,
-    query: Optional[str] = None,
+    client_name: str | None = None,
+    query: str | None = None,
 ) -> None:
     """The optional user parameter requests that a UserActivity row be
     created/updated to record this request.
@@ -239,10 +230,10 @@ def process_client(
 
 def validate_api_key(
     request: HttpRequest,
-    role: Optional[str],
+    role: str | None,
     api_key: str,
     allow_webhook_access: bool = False,
-    client_name: Optional[str] = None,
+    client_name: str | None = None,
 ) -> UserProfile:
     # Remove whitespace to protect users from trivial errors.
     api_key = api_key.strip()
@@ -282,7 +273,7 @@ def validate_account_and_subdomain(request: HttpRequest, user_profile: UserProfi
 
 
 def access_user_by_api_key(
-    request: HttpRequest, api_key: str, email: Optional[str] = None
+    request: HttpRequest, api_key: str, email: str | None = None
 ) -> UserProfile:
     if not has_api_key_format(api_key):
         raise InvalidAPIKeyFormatError
@@ -326,7 +317,7 @@ def log_exception_to_webhook_logger(request: HttpRequest, err: Exception) -> Non
         webhook_logger.exception(err, stack_info=True, extra=extra)
 
 
-def full_webhook_client_name(raw_client_name: Optional[str] = None) -> Optional[str]:
+def full_webhook_client_name(raw_client_name: str | None = None) -> str | None:
     if raw_client_name is None:
         return None
     return f"Zulip{raw_client_name}Webhook"
@@ -336,17 +327,17 @@ def full_webhook_client_name(raw_client_name: Optional[str] = None) -> Optional[
 def webhook_view(
     webhook_client_name: str,
     notify_bot_owner_on_invalid_json: bool = True,
-    all_event_types: Optional[Sequence[str]] = None,
+    all_event_types: Sequence[str] | None = None,
 ) -> Callable[[Callable[..., HttpResponse]], Callable[..., HttpResponse]]:
     # Unfortunately, callback protocols are insufficient for this:
     # https://mypy.readthedocs.io/en/stable/protocols.html#callback-protocols
     # Variadic generics are necessary: https://github.com/python/typing/issues/193
     def _wrapped_view_func(view_func: Callable[..., HttpResponse]) -> Callable[..., HttpResponse]:
         @csrf_exempt
-        @has_request_variables
         @wraps(view_func)
+        @typed_endpoint
         def _wrapped_func_arguments(
-            request: HttpRequest, /, api_key: str = REQ(), *args: object, **kwargs: object
+            request: HttpRequest, /, *args: object, api_key: str, **kwargs: object
         ) -> HttpResponse:
             user_profile = validate_api_key(
                 request,
@@ -389,7 +380,7 @@ def webhook_view(
 
 def zulip_redirect_to_login(
     request: HttpRequest,
-    login_url: Optional[str] = None,
+    login_url: str | None = None,
     redirect_field_name: str = REDIRECT_FIELD_NAME,
 ) -> HttpResponseRedirect:
     path = request.build_absolute_uri()
@@ -416,7 +407,7 @@ def zulip_redirect_to_login(
 # stock Django version.
 def user_passes_test(
     test_func: Callable[[HttpRequest], bool],
-    login_url: Optional[str] = None,
+    login_url: str | None = None,
     redirect_field_name: str = REDIRECT_FIELD_NAME,
 ) -> Callable[
     [Callable[Concatenate[HttpRequest, ParamT], HttpResponse]],
@@ -554,16 +545,16 @@ def zulip_login_required(
     Callable[Concatenate[HttpRequest, ParamT], HttpResponse],
 ]: ...
 def zulip_login_required(
-    function: Optional[Callable[Concatenate[HttpRequest, ParamT], HttpResponse]] = None,
+    function: Callable[Concatenate[HttpRequest, ParamT], HttpResponse] | None = None,
     redirect_field_name: str = REDIRECT_FIELD_NAME,
     login_url: str = settings.HOME_NOT_LOGGED_IN,
-) -> Union[
+) -> (
     Callable[
         [Callable[Concatenate[HttpRequest, ParamT], HttpResponse]],
         Callable[Concatenate[HttpRequest, ParamT], HttpResponse],
-    ],
-    Callable[Concatenate[HttpRequest, ParamT], HttpResponse],
-]:
+    ]
+    | Callable[Concatenate[HttpRequest, ParamT], HttpResponse]
+):
     actual_decorator = lambda function: user_passes_test(
         logged_in_and_active,
         login_url=login_url,
@@ -668,7 +659,7 @@ def require_member_or_admin(
     return _wrapped_view_func
 
 
-def require_user_group_edit_permission(
+def require_user_group_create_permission(
     view_func: Callable[Concatenate[HttpRequest, UserProfile, ParamT], HttpResponse],
 ) -> Callable[Concatenate[HttpRequest, UserProfile, ParamT], HttpResponse]:
     @require_member_or_admin
@@ -680,7 +671,7 @@ def require_user_group_edit_permission(
         *args: ParamT.args,
         **kwargs: ParamT.kwargs,
     ) -> HttpResponse:
-        if not user_profile.can_edit_user_groups():
+        if not user_profile.can_create_user_groups():
             raise JsonableError(_("Insufficient permission"))
         return view_func(request, user_profile, *args, **kwargs)
 
@@ -695,10 +686,10 @@ def authenticated_uploads_api_view(
 ) -> Callable[[Callable[..., HttpResponse]], Callable[..., HttpResponse]]:
     def _wrapped_view_func(view_func: Callable[..., HttpResponse]) -> Callable[..., HttpResponse]:
         @csrf_exempt
-        @has_request_variables
         @wraps(view_func)
+        @typed_endpoint
         def _wrapped_func_arguments(
-            request: HttpRequest, /, api_key: str = REQ(), *args: object, **kwargs: object
+            request: HttpRequest, /, *args: object, api_key: str, **kwargs: object
         ) -> HttpResponse:
             user_profile = validate_api_key(request, None, api_key, False)
             if not skip_rate_limiting:
@@ -712,7 +703,7 @@ def authenticated_uploads_api_view(
 
 def get_basic_credentials(
     request: HttpRequest, beanstalk_email_decode: bool = False
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     """
     Extracts the role and API key as a tuple from the Authorization header
     for HTTP basic authentication.
@@ -744,7 +735,7 @@ def get_basic_credentials(
 # with that string as the basis for the client string.
 def authenticated_rest_api_view(
     *,
-    webhook_client_name: Optional[str] = None,
+    webhook_client_name: str | None = None,
     allow_webhook_access: bool = False,
     skip_rate_limiting: bool = False,
     beanstalk_email_decode: bool = False,
@@ -853,7 +844,7 @@ def process_as_post(
 
 def public_json_view(
     view_func: Callable[
-        Concatenate[HttpRequest, Union[UserProfile, AnonymousUser], ParamT], HttpResponse
+        Concatenate[HttpRequest, UserProfile | AnonymousUser, ParamT], HttpResponse
     ],
     skip_rate_limiting: bool = False,
 ) -> Callable[Concatenate[HttpRequest, ParamT], HttpResponse]:
@@ -920,8 +911,7 @@ def authenticated_json_view(
 # from command-line tools into Django.  We protect them from the
 # outside world by checking a shared secret, and also the originating
 # IP (for now).
-@has_request_variables
-def authenticate_internal_api(request: HttpRequest, secret: str = REQ("secret")) -> bool:
+def authenticate_internal_api(request: HttpRequest, *, secret: str) -> bool:
     return is_local_addr(request.META["REMOTE_ADDR"]) and constant_time_compare(
         secret, settings.SHARED_SECRET
     )
@@ -939,14 +929,15 @@ def internal_api_view(
 
     def _wrapped_view_func(
         view_func: Callable[Concatenate[HttpRequest, ParamT], HttpResponse],
-    ) -> Callable[Concatenate[HttpRequest, ParamT], HttpResponse]:
+    ) -> Callable[..., HttpResponse]:
         @csrf_exempt
         @require_post
         @wraps(view_func)
+        @typed_endpoint
         def _wrapped_func_arguments(
-            request: HttpRequest, /, *args: ParamT.args, **kwargs: ParamT.kwargs
+            request: HttpRequest, /, *args: ParamT.args, secret: str, **kwargs: ParamT.kwargs
         ) -> HttpResponse:
-            if not authenticate_internal_api(request):
+            if not authenticate_internal_api(request, secret=secret):
                 raise AccessDeniedError
             request_notes = RequestNotes.get_notes(request)
             is_tornado_request = request_notes.tornado_handler_id is not None
@@ -964,7 +955,7 @@ def internal_api_view(
     return _wrapped_view_func
 
 
-def to_utc_datetime(var_name: str, timestamp: str) -> datetime:
+def to_utc_datetime(timestamp: str) -> datetime:
     return timestamp_to_datetime(float(timestamp))
 
 
@@ -1000,7 +991,7 @@ def zulip_otp_required_if_logged_in(
     to :setting:`OTP_LOGIN_URL`. Returns True if the user is not authenticated.
     """
 
-    def test(user: Union[AbstractBaseUser, AnonymousUser]) -> bool:
+    def test(user: AbstractBaseUser | AnonymousUser) -> bool:
         """
         :if_configured: If ``True``, an authenticated user with no confirmed
         OTP devices will be allowed. Also, non-authenticated users will be
@@ -1036,7 +1027,7 @@ def zulip_otp_required_if_logged_in(
     return decorator
 
 
-def add_google_analytics_context(context: Dict[str, object]) -> None:
+def add_google_analytics_context(context: dict[str, object]) -> None:
     if settings.GOOGLE_ANALYTICS_ID is not None:  # nocoverage
         page_params = context.setdefault("page_params", {})
         assert isinstance(page_params, dict)

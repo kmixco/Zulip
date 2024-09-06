@@ -1,9 +1,10 @@
 import uuid
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
 from operator import attrgetter
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode, urlsplit
 
 from django import forms
@@ -18,7 +19,6 @@ from django.utils.timesince import timesince
 from django.utils.timezone import now as timezone_now
 from django.utils.translation import gettext as _
 from pydantic import AfterValidator, Json, NonNegativeInt
-from typing_extensions import Annotated, Literal
 
 from confirmation.models import Confirmation, confirmation_url
 from confirmation.settings import STATUS_USED
@@ -46,6 +46,7 @@ from corporate.lib.support import (
 from corporate.models import CustomerPlan
 from zerver.actions.create_realm import do_change_realm_subdomain
 from zerver.actions.realm_settings import (
+    do_change_realm_max_invites,
     do_change_realm_org_type,
     do_change_realm_plan_type,
     do_deactivate_realm,
@@ -74,7 +75,11 @@ from zerver.models import (
     RealmReactivationStatus,
     UserProfile,
 )
-from zerver.models.realms import get_org_type_display_name, get_realm
+from zerver.models.realms import (
+    get_default_max_invites_for_realm_plan_type,
+    get_org_type_display_name,
+    get_realm,
+)
 from zerver.models.users import get_user_profile_by_id
 from zerver.views.invite import get_invitee_emails_set
 from zilencer.lib.remote_counts import MissingDataError, compute_max_monthly_messages
@@ -104,7 +109,7 @@ class DemoRequestForm(forms.Form):
     role = forms.CharField(max_length=MAX_INPUT_LENGTH)
     organization_name = forms.CharField(max_length=MAX_INPUT_LENGTH)
     organization_type = forms.CharField()
-    organization_website = forms.URLField(required=True)
+    organization_website = forms.URLField(required=True, assume_scheme="https")
     expected_user_count = forms.CharField(max_length=MAX_INPUT_LENGTH)
     message = forms.CharField(widget=forms.Textarea)
 
@@ -215,8 +220,8 @@ def get_plan_type_string(plan_type: int) -> str:
 
 
 def get_confirmations(
-    types: List[int], object_ids: Iterable[int], hostname: Optional[str] = None
-) -> List[Dict[str, Any]]:
+    types: list[int], object_ids: Iterable[int], hostname: str | None = None
+) -> list[dict[str, Any]]:
     lowest_datetime = timezone_now() - timedelta(days=30)
     confirmations = Confirmation.objects.filter(
         type__in=types, object_id__in=object_ids, date_sent__gte=lowest_datetime
@@ -265,7 +270,7 @@ class SupportSelectOption:
     value: int
 
 
-def get_remote_plan_tier_options() -> List[SupportSelectOption]:
+def get_remote_plan_tier_options() -> list[SupportSelectOption]:
     remote_plan_tiers = [
         SupportSelectOption("None", 0),
         SupportSelectOption(
@@ -280,7 +285,7 @@ def get_remote_plan_tier_options() -> List[SupportSelectOption]:
     return remote_plan_tiers
 
 
-def get_realm_plan_type_options() -> List[SupportSelectOption]:
+def get_realm_plan_type_options() -> list[SupportSelectOption]:
     plan_types = [
         SupportSelectOption(
             get_plan_type_string(Realm.PLAN_TYPE_SELF_HOSTED), Realm.PLAN_TYPE_SELF_HOSTED
@@ -297,7 +302,7 @@ def get_realm_plan_type_options() -> List[SupportSelectOption]:
     return plan_types
 
 
-def get_realm_plan_type_options_for_discount() -> List[SupportSelectOption]:
+def get_realm_plan_type_options_for_discount() -> list[SupportSelectOption]:
     plan_types = [
         SupportSelectOption("None", 0),
         SupportSelectOption(
@@ -310,6 +315,19 @@ def get_realm_plan_type_options_for_discount() -> List[SupportSelectOption]:
         ),
     ]
     return plan_types
+
+
+def get_default_max_invites_for_plan_type(realm: Realm) -> int:
+    default_max = get_default_max_invites_for_realm_plan_type(realm.plan_type)
+    if default_max is None:
+        return settings.INVITES_DEFAULT_REALM_DAILY_MAX
+    return default_max
+
+
+def check_update_max_invites(realm: Realm, new_max: int, default_max: int) -> bool:
+    if new_max in [0, default_max]:
+        return realm.max_invites != default_max
+    return new_max > default_max
 
 
 VALID_MODIFY_PLAN_METHODS = Literal[
@@ -326,30 +344,37 @@ VALID_BILLING_MODALITY_VALUES = Literal[
     "charge_automatically",
 ]
 
+SHARED_SUPPORT_CONTEXT = {
+    "get_org_type_display_name": get_org_type_display_name,
+    "get_plan_type_name": get_plan_type_string,
+    "dollar_amount": cents_to_dollar_string,
+}
+
 
 @require_server_admin
 @typed_endpoint
 def support(
     request: HttpRequest,
     *,
-    realm_id: Optional[Json[NonNegativeInt]] = None,
-    plan_type: Optional[Json[NonNegativeInt]] = None,
-    monthly_discounted_price: Optional[Json[NonNegativeInt]] = None,
-    annual_discounted_price: Optional[Json[NonNegativeInt]] = None,
-    minimum_licenses: Optional[Json[NonNegativeInt]] = None,
-    required_plan_tier: Optional[Json[NonNegativeInt]] = None,
-    new_subdomain: Optional[str] = None,
-    status: Optional[VALID_STATUS_VALUES] = None,
-    billing_modality: Optional[VALID_BILLING_MODALITY_VALUES] = None,
-    sponsorship_pending: Optional[Json[bool]] = None,
+    realm_id: Json[NonNegativeInt] | None = None,
+    plan_type: Json[NonNegativeInt] | None = None,
+    monthly_discounted_price: Json[NonNegativeInt] | None = None,
+    annual_discounted_price: Json[NonNegativeInt] | None = None,
+    minimum_licenses: Json[NonNegativeInt] | None = None,
+    required_plan_tier: Json[NonNegativeInt] | None = None,
+    new_subdomain: str | None = None,
+    status: VALID_STATUS_VALUES | None = None,
+    billing_modality: VALID_BILLING_MODALITY_VALUES | None = None,
+    sponsorship_pending: Json[bool] | None = None,
     approve_sponsorship: Json[bool] = False,
-    modify_plan: Optional[VALID_MODIFY_PLAN_METHODS] = None,
+    modify_plan: VALID_MODIFY_PLAN_METHODS | None = None,
     scrub_realm: Json[bool] = False,
-    delete_user_by_id: Optional[Json[NonNegativeInt]] = None,
-    query: Annotated[Optional[str], ApiParamConfig("q")] = None,
-    org_type: Optional[Json[NonNegativeInt]] = None,
+    delete_user_by_id: Json[NonNegativeInt] | None = None,
+    query: Annotated[str | None, ApiParamConfig("q")] = None,
+    org_type: Json[NonNegativeInt] | None = None,
+    max_invites: Json[NonNegativeInt] | None = None,
 ) -> HttpResponse:
-    context: Dict[str, Any] = {}
+    context: dict[str, Any] = {**SHARED_SUPPORT_CONTEXT}
 
     if "success_message" in request.session:
         context["success_message"] = request.session["success_message"]
@@ -361,8 +386,7 @@ def support(
         # We check that request.POST only has two keys in it: The
         # realm_id and a field to change.
         keys = set(request.POST.keys())
-        if "csrfmiddlewaretoken" in keys:
-            keys.remove("csrfmiddlewaretoken")
+        keys.discard("csrfmiddlewaretoken")
         REQUIRED_KEYS = 2
         if monthly_discounted_price is not None or annual_discounted_price is not None:
             REQUIRED_KEYS = 3
@@ -418,8 +442,24 @@ def support(
         elif org_type is not None:
             current_realm_type = realm.org_type
             do_change_realm_org_type(realm, org_type, acting_user=acting_user)
-            msg = f"Org type of {realm.string_id} changed from {get_org_type_display_name(current_realm_type)} to {get_org_type_display_name(org_type)} "
+            msg = f"Organization type of {realm.string_id} changed from {get_org_type_display_name(current_realm_type)} to {get_org_type_display_name(org_type)} "
             context["success_message"] = msg
+        elif max_invites is not None:
+            default_max = get_default_max_invites_for_plan_type(realm)
+            if check_update_max_invites(realm, max_invites, default_max):
+                do_change_realm_max_invites(realm, max_invites, acting_user=acting_user)
+                update_text = str(max_invites)
+                if max_invites == 0:
+                    update_text = "the default for the current plan type"
+                msg = f"Maximum number of daily invitations for {realm.string_id} updated to {update_text}."
+                context["success_message"] = msg
+            else:
+                update_text = f"{max_invites} is less than the default for the current plan type"
+                if max_invites in [0, default_max]:
+                    update_text = "the default for the current plan type is already set"
+                context["error_message"] = (
+                    f"Cannot update maximum number of daily invitations for {realm.string_id}, because {update_text}."
+                )
         elif new_subdomain is not None:
             old_subdomain = realm.string_id
             try:
@@ -499,7 +539,7 @@ def support(
         context["users"] = users
         context["realms"] = realms
 
-        confirmations: List[Dict[str, Any]] = []
+        confirmations: list[dict[str, Any]] = []
 
         preregistration_user_ids = [
             user.id for user in PreregistrationUser.objects.filter(email__in=key_words)
@@ -544,12 +584,13 @@ def support(
             ]
             + [user.realm for user in users]
         )
-        realm_support_data: Dict[int, CloudSupportData] = {}
+        realm_support_data: dict[int, CloudSupportData] = {}
         for realm in all_realms:
             billing_session = RealmBillingSession(user=None, realm=realm)
             realm_data = get_data_for_cloud_support_view(billing_session)
             realm_support_data[realm.id] = realm_data
         context["realm_support_data"] = realm_support_data
+        context["SPONSORED_PLAN_TYPE"] = Realm.PLAN_TYPE_STANDARD_FREE
 
     def get_realm_owner_emails_as_string(realm: Realm) -> str:
         return ", ".join(
@@ -567,7 +608,6 @@ def support(
 
     context["get_realm_owner_emails_as_string"] = get_realm_owner_emails_as_string
     context["get_realm_admin_emails_as_string"] = get_realm_admin_emails_as_string
-    context["dollar_amount"] = cents_to_dollar_string
     context["realm_icon_url"] = realm_icon_url
     context["Confirmation"] = Confirmation
     context["REALM_PLAN_TYPES"] = get_realm_plan_type_options()
@@ -580,42 +620,50 @@ def support(
 
 
 def get_remote_servers_for_support(
-    email_to_search: Optional[str], uuid_to_search: Optional[str], hostname_to_search: Optional[str]
-) -> List["RemoteZulipServer"]:
+    email_to_search: str | None, uuid_to_search: str | None, hostname_to_search: str | None
+) -> list["RemoteZulipServer"]:
     remote_servers_query = RemoteZulipServer.objects.order_by("id")
 
     if email_to_search:
-        remote_servers_set = set(remote_servers_query.filter(contact_email__iexact=email_to_search))
-        remote_server_billing_users = RemoteServerBillingUser.objects.filter(
-            email__iexact=email_to_search
-        ).select_related("remote_server")
-        for server_billing_user in remote_server_billing_users:
-            remote_servers_set.add(server_billing_user.remote_server)
-        remote_realm_billing_users = RemoteRealmBillingUser.objects.filter(
-            email__iexact=email_to_search
-        ).select_related("remote_realm__server")
-        for realm_billing_user in remote_realm_billing_users:
-            remote_servers_set.add(realm_billing_user.remote_realm.server)
+        remote_servers_set = {
+            *remote_servers_query.filter(contact_email__iexact=email_to_search),
+            *(
+                server_billing_user.remote_server
+                for server_billing_user in RemoteServerBillingUser.objects.filter(
+                    email__iexact=email_to_search
+                ).select_related("remote_server")
+            ),
+            *(
+                realm_billing_user.remote_realm.server
+                for realm_billing_user in RemoteRealmBillingUser.objects.filter(
+                    email__iexact=email_to_search
+                ).select_related("remote_realm__server")
+            ),
+        }
         return sorted(remote_servers_set, key=attrgetter("deactivated"))
 
     if uuid_to_search:
-        remote_servers_set = set(remote_servers_query.filter(uuid__iexact=uuid_to_search))
-        remote_realm_matches = RemoteRealm.objects.filter(
-            uuid__iexact=uuid_to_search
-        ).select_related("server")
-        for remote_realm in remote_realm_matches:
-            remote_servers_set.add(remote_realm.server)
+        remote_servers_set = {
+            *remote_servers_query.filter(uuid__iexact=uuid_to_search),
+            *(
+                remote_realm.server
+                for remote_realm in RemoteRealm.objects.filter(
+                    uuid__iexact=uuid_to_search
+                ).select_related("server")
+            ),
+        }
         return sorted(remote_servers_set, key=attrgetter("deactivated"))
 
     if hostname_to_search:
-        remote_servers_set = set(
-            remote_servers_query.filter(hostname__icontains=hostname_to_search)
-        )
-        remote_realm_matches = (
-            RemoteRealm.objects.filter(host__icontains=hostname_to_search)
-        ).select_related("server")
-        for remote_realm in remote_realm_matches:
-            remote_servers_set.add(remote_realm.server)
+        remote_servers_set = {
+            *remote_servers_query.filter(hostname__icontains=hostname_to_search),
+            *(
+                remote_realm.server
+                for remote_realm in (
+                    RemoteRealm.objects.filter(host__icontains=hostname_to_search)
+                ).select_related("server")
+            ),
+        }
         return sorted(remote_servers_set, key=attrgetter("deactivated"))
 
     return []
@@ -626,26 +674,29 @@ def get_remote_servers_for_support(
 def remote_servers_support(
     request: HttpRequest,
     *,
-    query: Annotated[Optional[str], ApiParamConfig("q")] = None,
-    remote_server_id: Optional[Json[NonNegativeInt]] = None,
-    remote_realm_id: Optional[Json[NonNegativeInt]] = None,
-    monthly_discounted_price: Optional[Json[NonNegativeInt]] = None,
-    annual_discounted_price: Optional[Json[NonNegativeInt]] = None,
-    minimum_licenses: Optional[Json[NonNegativeInt]] = None,
-    required_plan_tier: Optional[Json[NonNegativeInt]] = None,
-    fixed_price: Optional[Json[NonNegativeInt]] = None,
-    sent_invoice_id: Optional[str] = None,
-    sponsorship_pending: Optional[Json[bool]] = None,
+    query: Annotated[str | None, ApiParamConfig("q")] = None,
+    remote_server_id: Json[NonNegativeInt] | None = None,
+    remote_realm_id: Json[NonNegativeInt] | None = None,
+    monthly_discounted_price: Json[NonNegativeInt] | None = None,
+    annual_discounted_price: Json[NonNegativeInt] | None = None,
+    minimum_licenses: Json[NonNegativeInt] | None = None,
+    required_plan_tier: Json[NonNegativeInt] | None = None,
+    fixed_price: Json[NonNegativeInt] | None = None,
+    sent_invoice_id: str | None = None,
+    sponsorship_pending: Json[bool] | None = None,
     approve_sponsorship: Json[bool] = False,
-    billing_modality: Optional[VALID_BILLING_MODALITY_VALUES] = None,
-    plan_end_date: Optional[
-        Annotated[str, AfterValidator(lambda x: check_date("plan_end_date", x))]
-    ] = None,
-    modify_plan: Optional[VALID_MODIFY_PLAN_METHODS] = None,
+    billing_modality: VALID_BILLING_MODALITY_VALUES | None = None,
+    plan_end_date: Annotated[str, AfterValidator(lambda x: check_date("plan_end_date", x))]
+    | None = None,
+    modify_plan: VALID_MODIFY_PLAN_METHODS | None = None,
     delete_fixed_price_next_plan: Json[bool] = False,
-    remote_server_status: Optional[VALID_STATUS_VALUES] = None,
+    remote_server_status: VALID_STATUS_VALUES | None = None,
+    temporary_courtesy_plan: Annotated[
+        str, AfterValidator(lambda x: check_date("temporary_courtesy_plan", x))
+    ]
+    | None = None,
 ) -> HttpResponse:
-    context: Dict[str, Any] = {}
+    context: dict[str, Any] = {**SHARED_SUPPORT_CONTEXT}
 
     if "success_message" in request.session:
         context["success_message"] = request.session["success_message"]
@@ -655,8 +706,7 @@ def remote_servers_support(
     assert isinstance(acting_user, UserProfile)
     if settings.BILLING_ENABLED and request.method == "POST":
         keys = set(request.POST.keys())
-        if "csrfmiddlewaretoken" in keys:
-            keys.remove("csrfmiddlewaretoken")
+        keys.discard("csrfmiddlewaretoken")
 
         if remote_realm_id is not None:
             remote_realm_support_request = True
@@ -699,6 +749,11 @@ def remote_servers_support(
                 support_type=SupportType.configure_fixed_price_plan,
                 fixed_price=fixed_price,
                 sent_invoice_id=sent_invoice_id,
+            )
+        elif temporary_courtesy_plan is not None:
+            support_view_request = SupportViewRequest(
+                support_type=SupportType.configure_temporary_courtesy_plan,
+                plan_end_date=temporary_courtesy_plan,
             )
         elif billing_modality is not None:
             support_view_request = SupportViewRequest(
@@ -778,10 +833,10 @@ def remote_servers_support(
         uuid_to_search=uuid_to_search,
         hostname_to_search=hostname_to_search,
     )
-    remote_server_to_max_monthly_messages: Dict[int, Union[int, str]] = dict()
-    server_support_data: Dict[int, RemoteSupportData] = {}
-    realm_support_data: Dict[int, RemoteSupportData] = {}
-    remote_realms: Dict[int, List[RemoteRealm]] = {}
+    remote_server_to_max_monthly_messages: dict[int, int | str] = dict()
+    server_support_data: dict[int, RemoteSupportData] = {}
+    realm_support_data: dict[int, RemoteSupportData] = {}
+    remote_realms: dict[int, list[RemoteRealm]] = {}
     for remote_server in remote_servers:
         # Get remote realms attached to remote server
         remote_realms_for_server = list(
@@ -826,10 +881,7 @@ def remote_servers_support(
     context["remote_server_to_max_monthly_messages"] = remote_server_to_max_monthly_messages
     context["remote_realms"] = remote_realms
     context["remote_realms_support_data"] = realm_support_data
-    context["get_plan_type_name"] = get_plan_type_string
-    context["get_org_type_display_name"] = get_org_type_display_name
     context["format_optional_datetime"] = format_optional_datetime
-    context["dollar_amount"] = cents_to_dollar_string
     context["server_analytics_link"] = remote_installation_stats_link
     context["REMOTE_PLAN_TIERS"] = get_remote_plan_tier_options()
     context["get_remote_server_billing_user_emails"] = (

@@ -1,4 +1,5 @@
 import {$t} from "./i18n";
+import * as util from "./util";
 
 export type UploadWidget = {
     clear: () => void;
@@ -13,7 +14,18 @@ export type UploadFunction = (
 
 const default_max_file_size = 5;
 
-const supported_types = ["image/jpeg", "image/png", "image/gif", "image/tiff"];
+// These formats do not need to be universally understood by clients; they are all
+// converted, server-side, currently to PNGs.  This list should be kept in sync with
+// the THUMBNAIL_ACCEPT_IMAGE_TYPES in zerver/lib/thumbnail.py
+const supported_types = [
+    "image/avif",
+    "image/gif",
+    "image/heic",
+    "image/jpeg",
+    "image/png",
+    "image/tiff",
+    "image/webp",
+];
 
 function is_image_format(file: File): boolean {
     const type = file.type;
@@ -72,7 +84,7 @@ export function build_widget(
         if (files === null || files === undefined || files.length === 0) {
             return false;
         }
-        get_file_input()[0]!.files = files;
+        util.the(get_file_input()).files = files;
         e.preventDefault();
         return false;
     });
@@ -160,7 +172,7 @@ export function build_direct_upload_widget(
         if (files === null || files === undefined || files.length === 0) {
             return false;
         }
-        get_file_input()[0]!.files = files;
+        util.the(get_file_input()).files = files;
         e.preventDefault();
         return false;
     });

@@ -1,8 +1,5 @@
-# https://github.com/typeddjango/django-stubs/issues/1698
-# mypy: disable-error-code="explicit-override"
-
 from email.headerregistry import Address
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import uuid4
 
 from django.conf import settings
@@ -65,7 +62,6 @@ class UserBaseSettings(models.Model):
     # Values for it are URL suffix after `#`.
     web_home_view = models.TextField(default="inbox")
     web_escape_navigates_to_home_view = models.BooleanField(default=True)
-    dense_mode = models.BooleanField(default=True)
     fluid_layout_width = models.BooleanField(default=False)
     high_contrast_mode = models.BooleanField(default=False)
     translate_emoticons = models.BooleanField(default=False)
@@ -73,19 +69,25 @@ class UserBaseSettings(models.Model):
     twenty_four_hour_time = models.BooleanField(default=False)
     starred_message_counts = models.BooleanField(default=True)
     COLOR_SCHEME_AUTOMATIC = 1
-    COLOR_SCHEME_NIGHT = 2
+    COLOR_SCHEME_DARK = 2
     COLOR_SCHEME_LIGHT = 3
-    COLOR_SCHEME_CHOICES = [COLOR_SCHEME_AUTOMATIC, COLOR_SCHEME_NIGHT, COLOR_SCHEME_LIGHT]
+    COLOR_SCHEME_CHOICES = [COLOR_SCHEME_AUTOMATIC, COLOR_SCHEME_DARK, COLOR_SCHEME_LIGHT]
     color_scheme = models.PositiveSmallIntegerField(default=COLOR_SCHEME_AUTOMATIC)
 
     # Information density is established through
     # adjustments to the font size and line height.
-    WEB_FONT_SIZE_PX_LEGACY = 14
-    WEB_LINE_HEIGHT_PERCENT_LEGACY = 122
-    web_font_size_px = models.PositiveSmallIntegerField(default=WEB_FONT_SIZE_PX_LEGACY)
+    WEB_FONT_SIZE_PX_COMPACT = 14
+    WEB_FONT_SIZE_PX_DEFAULT = 16
+    WEB_LINE_HEIGHT_PERCENT_COMPACT = 122
+    WEB_LINE_HEIGHT_PERCENT_DEFAULT = 140
+    dense_mode = models.BooleanField(default=False)
+    web_font_size_px = models.PositiveSmallIntegerField(default=WEB_FONT_SIZE_PX_DEFAULT)
     web_line_height_percent = models.PositiveSmallIntegerField(
-        default=WEB_LINE_HEIGHT_PERCENT_LEGACY
+        default=WEB_LINE_HEIGHT_PERCENT_DEFAULT
     )
+
+    # UI setting to control how animated images are played.
+    web_animate_image_previews = models.TextField(default="on_hover")
 
     # UI setting controlling Zulip's behavior of demoting in the sort
     # order and graying out streams with no recent traffic.  The
@@ -115,6 +117,23 @@ class UserBaseSettings(models.Model):
     ]
 
     web_mark_read_on_scroll_policy = models.SmallIntegerField(default=MARK_READ_ON_SCROLL_ALWAYS)
+
+    # UI setting controlling if clicking on a channel link should open
+    # the channel feed (interleaved view) or narrow to the first topic
+    # in the channel.
+
+    WEB_CHANNEL_DEFAULT_VIEW_FIRST_TOPIC = 1
+    WEB_CHANNEL_DEFAULT_VIEW_CHANNEL_FEED = 2
+
+    WEB_CHANNEL_DEFAULT_VIEW_CHOICES = [
+        WEB_CHANNEL_DEFAULT_VIEW_FIRST_TOPIC,
+        WEB_CHANNEL_DEFAULT_VIEW_CHANNEL_FEED,
+    ]
+
+    web_channel_default_view = models.SmallIntegerField(
+        default=WEB_CHANNEL_DEFAULT_VIEW_FIRST_TOPIC,
+        db_default=WEB_CHANNEL_DEFAULT_VIEW_FIRST_TOPIC,
+    )
 
     # Emoji sets
     GOOGLE_EMOJISET = "google"
@@ -152,6 +171,10 @@ class UserBaseSettings(models.Model):
     web_stream_unreads_count_display_policy = models.PositiveSmallIntegerField(
         default=WEB_STREAM_UNREADS_COUNT_DISPLAY_POLICY_UNMUTED_STREAMS
     )
+
+    # Setting to control whether to automatically go to the
+    # conversation where message was sent.
+    web_navigate_to_sent_message = models.BooleanField(default=True)
 
     ### Notifications settings. ###
 
@@ -325,13 +348,16 @@ class UserBaseSettings(models.Model):
         send_read_receipts=bool,
         send_stream_typing_notifications=bool,
         web_mark_read_on_scroll_policy=int,
+        web_channel_default_view=int,
         user_list_style=int,
+        web_animate_image_previews=str,
         web_stream_unreads_count_display_policy=int,
         web_font_size_px=int,
         web_line_height_percent=int,
+        web_navigate_to_sent_message=bool,
     )
 
-    modern_notification_settings: Dict[str, Any] = dict(
+    modern_notification_settings: dict[str, Any] = dict(
         # Add new notification settings here.
         enable_followed_topic_desktop_notifications=bool,
         enable_followed_topic_email_notifications=bool,
@@ -359,7 +385,7 @@ class UserBaseSettings(models.Model):
         abstract = True
 
     @staticmethod
-    def emojiset_choices() -> List[Dict[str, str]]:
+    def emojiset_choices() -> list[dict[str, str]]:
         return [
             dict(key=emojiset[0], text=emojiset[1]) for emojiset in UserProfile.EMOJISET_CHOICES
         ]
@@ -565,22 +591,6 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
     # us, pre-thumbnailing.
     avatar_hash = models.CharField(null=True, max_length=64)
 
-    # TODO: TUTORIAL_STATUS was originally an optimization designed to
-    # allow us to skip querying the OnboardingStep table when loading
-    # /. This optimization is no longer effective, so it's possible we
-    # should delete it.
-    TUTORIAL_WAITING = "W"
-    TUTORIAL_STARTED = "S"
-    TUTORIAL_FINISHED = "F"
-    TUTORIAL_STATES = (
-        (TUTORIAL_WAITING, "Waiting"),
-        (TUTORIAL_STARTED, "Started"),
-        (TUTORIAL_FINISHED, "Finished"),
-    )
-    tutorial_status = models.CharField(
-        default=TUTORIAL_WAITING, choices=TUTORIAL_STATES, max_length=1
-    )
-
     zoom_token = models.JSONField(default=None, null=True)
 
     objects = UserManager()
@@ -592,6 +602,17 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
         ROLE_MEMBER: gettext_lazy("Member"),
         ROLE_GUEST: gettext_lazy("Guest"),
     }
+
+    # Mapping of role ids to simple string identifiers for the roles,
+    # to be used in API contexts such as SCIM provisioning.
+    ROLE_ID_TO_API_NAME = {
+        ROLE_REALM_OWNER: "owner",
+        ROLE_REALM_ADMINISTRATOR: "administrator",
+        ROLE_MODERATOR: "moderator",
+        ROLE_MEMBER: "member",
+        ROLE_GUEST: "guest",
+    }
+    ROLE_API_NAME_TO_ID = {v: k for k, v in ROLE_ID_TO_API_NAME.items()}
 
     class Meta:
         indexes = [
@@ -723,7 +744,7 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
         return self.bot_type == UserProfile.INCOMING_WEBHOOK_BOT
 
     @property
-    def allowed_bot_types(self) -> List[int]:
+    def allowed_bot_types(self) -> list[int]:
         from zerver.models.realms import BotCreationPolicyEnum
 
         allowed_bot_types = []
@@ -754,9 +775,12 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
             "add_custom_emoji_policy",
             "can_create_private_channel_group",
             "can_create_public_channel_group",
+            "can_create_web_public_channel_group",
+            "can_delete_any_message_group",
             "create_multiuse_invite_group",
-            "create_web_public_stream_policy",
             "delete_own_message_policy",
+            "direct_message_initiator_group",
+            "direct_message_permission_group",
             "edit_topic_policy",
             "invite_to_stream_policy",
             "invite_to_realm_policy",
@@ -817,7 +841,7 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
     def can_create_web_public_streams(self) -> bool:
         if not self.realm.web_public_streams_enabled():
             return False
-        return self.has_permission("create_web_public_stream_policy")
+        return self.has_permission("can_create_web_public_channel_group")
 
     def can_subscribe_other_users(self) -> bool:
         return self.has_permission("invite_to_stream_policy")
@@ -831,7 +855,10 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
     def can_move_messages_between_streams(self) -> bool:
         return self.has_permission("move_messages_between_streams_policy")
 
-    def can_edit_user_groups(self) -> bool:
+    def can_create_user_groups(self) -> bool:
+        return self.has_permission("user_group_edit_policy")
+
+    def can_edit_all_user_groups(self) -> bool:
         return self.has_permission("user_group_edit_policy")
 
     def can_move_messages_to_another_topic(self) -> bool:
@@ -839,6 +866,9 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
 
     def can_add_custom_emoji(self) -> bool:
         return self.has_permission("add_custom_emoji_policy")
+
+    def can_delete_any_message(self) -> bool:
+        return self.has_permission("can_delete_any_message_group")
 
     def can_delete_own_message(self) -> bool:
         return self.has_permission("delete_own_message_policy")
@@ -856,7 +886,7 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
         return "{}@{}".format(self.id, self.realm.string_id or "root")
 
     @override
-    def set_password(self, password: Optional[str]) -> None:
+    def set_password(self, password: str | None) -> None:
         if password is None:
             self.set_unusable_password()
             return
@@ -890,6 +920,10 @@ def get_user_profile_by_id(user_profile_id: int) -> UserProfile:
         "realm",
         "realm__can_access_all_users_group",
         "realm__can_access_all_users_group__named_user_group",
+        "realm__direct_message_initiator_group",
+        "realm__direct_message_initiator_group__named_user_group",
+        "realm__direct_message_permission_group",
+        "realm__direct_message_permission_group__named_user_group",
         "bot_owner",
     ).get(id=user_profile_id)
 
@@ -905,7 +939,7 @@ def get_user_profile_by_email(email: str) -> UserProfile:
 
 
 @cache_with_key(user_profile_by_api_key_cache_key, timeout=3600 * 24 * 7)
-def maybe_get_user_profile_by_api_key(api_key: str) -> Optional[UserProfile]:
+def maybe_get_user_profile_by_api_key(api_key: str) -> UserProfile | None:
     try:
         return UserProfile.objects.select_related(
             "realm",
@@ -940,11 +974,15 @@ def get_user_by_delivery_email(email: str, realm: "Realm") -> UserProfile:
         "realm",
         "realm__can_access_all_users_group",
         "realm__can_access_all_users_group__named_user_group",
+        "realm__direct_message_initiator_group",
+        "realm__direct_message_initiator_group__named_user_group",
+        "realm__direct_message_permission_group",
+        "realm__direct_message_permission_group__named_user_group",
         "bot_owner",
     ).get(delivery_email__iexact=email.strip(), realm=realm)
 
 
-def get_users_by_delivery_email(emails: Set[str], realm: "Realm") -> QuerySet[UserProfile]:
+def get_users_by_delivery_email(emails: set[str], realm: "Realm") -> QuerySet[UserProfile]:
     """This is similar to get_user_by_delivery_email, and
     it has the same security caveats.  It gets multiple
     users and returns a QuerySet, since most callers
@@ -980,6 +1018,10 @@ def get_user(email: str, realm: "Realm") -> UserProfile:
         "realm",
         "realm__can_access_all_users_group",
         "realm__can_access_all_users_group__named_user_group",
+        "realm__direct_message_initiator_group",
+        "realm__direct_message_initiator_group__named_user_group",
+        "realm__direct_message_permission_group",
+        "realm__direct_message_permission_group__named_user_group",
         "bot_owner",
     ).get(email__iexact=email.strip(), realm=realm)
 
@@ -1047,7 +1089,7 @@ def get_user_by_id_in_realm_including_cross_realm(
 
 
 @cache_with_key(realm_user_dicts_cache_key, timeout=3600 * 24 * 7)
-def get_realm_user_dicts(realm_id: int) -> List[RawUserDict]:
+def get_realm_user_dicts(realm_id: int) -> list[RawUserDict]:
     return list(
         UserProfile.objects.filter(
             realm_id=realm_id,
@@ -1056,7 +1098,7 @@ def get_realm_user_dicts(realm_id: int) -> List[RawUserDict]:
 
 
 @cache_with_key(active_user_ids_cache_key, timeout=3600 * 24 * 7)
-def active_user_ids(realm_id: int) -> List[int]:
+def active_user_ids(realm_id: int) -> list[int]:
     query = UserProfile.objects.filter(
         realm_id=realm_id,
         is_active=True,
@@ -1065,7 +1107,7 @@ def active_user_ids(realm_id: int) -> List[int]:
 
 
 @cache_with_key(active_non_guest_user_ids_cache_key, timeout=3600 * 24 * 7)
-def active_non_guest_user_ids(realm_id: int) -> List[int]:
+def active_non_guest_user_ids(realm_id: int) -> list[int]:
     query = (
         UserProfile.objects.filter(
             realm_id=realm_id,
@@ -1079,7 +1121,7 @@ def active_non_guest_user_ids(realm_id: int) -> List[int]:
     return list(query)
 
 
-def bot_owner_user_ids(user_profile: UserProfile) -> Set[int]:
+def bot_owner_user_ids(user_profile: UserProfile) -> set[int]:
     is_private_bot = (
         user_profile.default_sending_stream and user_profile.default_sending_stream.invite_only
     ) or (
@@ -1095,7 +1137,7 @@ def bot_owner_user_ids(user_profile: UserProfile) -> Set[int]:
         return users
 
 
-def get_source_profile(email: str, realm_id: int) -> Optional[UserProfile]:
+def get_source_profile(email: str, realm_id: int) -> UserProfile | None:
     from zerver.models import Realm
     from zerver.models.realms import get_realm_by_id
 
@@ -1106,7 +1148,7 @@ def get_source_profile(email: str, realm_id: int) -> Optional[UserProfile]:
 
 
 @cache_with_key(lambda realm: bot_dicts_in_realm_cache_key(realm.id), timeout=3600 * 24 * 7)
-def get_bot_dicts_in_realm(realm: "Realm") -> List[Dict[str, Any]]:
+def get_bot_dicts_in_realm(realm: "Realm") -> list[dict[str, Any]]:
     return list(UserProfile.objects.filter(realm=realm, is_bot=True).values(*bot_dict_fields))
 
 

@@ -39,7 +39,7 @@ problematic behavior.
   [edit](/help/restrict-message-editing-and-deletion#configure-message-editing-permissions)
   and
   [delete](/help/restrict-message-editing-and-deletion#configure-message-deletion-permissions)
-  their own messages, and set time limits on message editing and deletion.
+  messages, and set time limits on message editing and deletion.
 * If you are concerned about impersonation, you can [prevent users from changing
   their name](/help/restrict-name-and-email-changes#restrict-name-changes), or
   [require unique
@@ -54,7 +54,8 @@ problematic behavior.
 * Create a [default channel](/help/set-default-channels-for-new-users)
   for announcements where [only admins can
   post](/help/channel-posting-policy).
-* Restrict who can [send direct messages](/help/restrict-direct-messages).
+* Configure who can [authorize and start](/help/restrict-direct-messages) direct
+  message conversations.
 
 ## Response
 

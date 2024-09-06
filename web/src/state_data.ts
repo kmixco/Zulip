@@ -96,6 +96,7 @@ export const user_schema = z
         is_missing_server_data: z.optional(z.boolean()),
         // used for inaccessible user objects.
         is_inaccessible_user: z.optional(z.boolean()),
+        is_system_bot: z.optional(z.literal(true)),
     })
     .and(
         z.discriminatedUnion("is_bot", [
@@ -110,12 +111,6 @@ export const user_schema = z
             }),
         ]),
     );
-
-export const cross_realm_bot_schema = user_schema.and(
-    z.object({
-        is_system_bot: z.boolean(),
-    }),
-);
 
 export const server_emoji_schema = z.object({
     id: z.string(),
@@ -138,6 +133,7 @@ export const user_group_schema = z.object({
     members: z.array(z.number()),
     is_system_group: z.boolean(),
     direct_subgroup_ids: z.array(z.number()),
+    can_manage_group: z.number(),
     can_mention_group: z.number(),
 });
 
@@ -179,27 +175,35 @@ const one_time_notice_schema = z.object({
     type: z.literal("one_time_notice"),
 });
 
-/* We may introduce onboarding step of types other than 'one time notice'
-in future. Earlier, we had 'hotspot' and 'one time notice' as the two
-types. We can simply do:
-const onboarding_step_schema = z.union([one_time_notice_schema, other_type_schema]);
-to avoid major refactoring when new type is introduced in the future. */
-export const onboarding_step_schema = one_time_notice_schema;
+const one_time_action_schema = z.object({
+    name: z.string(),
+    type: z.literal("one_time_action"),
+});
+
+export const thumbnail_format_schema = z.object({
+    name: z.string(),
+    max_width: z.number(),
+    max_height: z.number(),
+    format: z.string(),
+    animated: z.boolean(),
+});
+
+export const onboarding_step_schema = z.union([one_time_notice_schema, one_time_action_schema]);
 
 // Sync this with zerver.lib.events.do_events_register.
 const current_user_schema = z.object({
     avatar_source: z.string(),
-    avatar_url: NOT_TYPED_YET,
-    avatar_url_medium: NOT_TYPED_YET,
-    can_create_private_streams: NOT_TYPED_YET,
-    can_create_public_streams: NOT_TYPED_YET,
-    can_create_streams: NOT_TYPED_YET,
-    can_create_web_public_streams: NOT_TYPED_YET,
-    can_invite_others_to_realm: NOT_TYPED_YET,
-    can_subscribe_other_users: NOT_TYPED_YET,
+    avatar_url: z.string().nullish(),
+    avatar_url_medium: z.string().nullish(),
+    can_create_private_streams: z.boolean(),
+    can_create_public_streams: z.boolean(),
+    can_create_streams: z.boolean(),
+    can_create_web_public_streams: z.boolean(),
+    can_invite_others_to_realm: z.boolean(),
+    can_subscribe_other_users: z.boolean(),
     delivery_email: z.string(),
-    email: NOT_TYPED_YET,
-    full_name: NOT_TYPED_YET,
+    email: z.string(),
+    full_name: z.string(),
     has_zoom_token: z.boolean(),
     is_admin: z.boolean(),
     is_billing_admin: z.boolean(),
@@ -209,19 +213,23 @@ const current_user_schema = z.object({
     user_id: z.number(),
 });
 
+const custom_profile_field_types_schema = z.object({
+    SHORT_TEXT: z.object({id: z.number(), name: z.string()}),
+    LONG_TEXT: z.object({id: z.number(), name: z.string()}),
+    DATE: z.object({id: z.number(), name: z.string()}),
+    SELECT: z.object({id: z.number(), name: z.string()}),
+    URL: z.object({id: z.number(), name: z.string()}),
+    EXTERNAL_ACCOUNT: z.object({id: z.number(), name: z.string()}),
+    USER: z.object({id: z.number(), name: z.string()}),
+    PRONOUNS: z.object({id: z.number(), name: z.string()}),
+});
+
+export type CustomProfileFieldTypes = z.infer<typeof custom_profile_field_types_schema>;
+
 // Sync this with zerver.lib.events.do_events_register.
 const realm_schema = z.object({
     custom_profile_fields: z.array(custom_profile_field_schema),
-    custom_profile_field_types: z.object({
-        SHORT_TEXT: z.object({id: z.number(), name: z.string()}),
-        LONG_TEXT: z.object({id: z.number(), name: z.string()}),
-        DATE: z.object({id: z.number(), name: z.string()}),
-        SELECT: z.object({id: z.number(), name: z.string()}),
-        URL: z.object({id: z.number(), name: z.string()}),
-        EXTERNAL_ACCOUNT: z.object({id: z.number(), name: z.string()}),
-        USER: z.object({id: z.number(), name: z.string()}),
-        PRONOUNS: z.object({id: z.number(), name: z.string()}),
-    }),
+    custom_profile_field_types: custom_profile_field_types_schema,
     demo_organization_scheduled_deletion_date: z.optional(z.number()),
     giphy_api_key: z.string(),
     giphy_rating_options: z
@@ -254,14 +262,15 @@ const realm_schema = z.object({
         big_blue_button: z.optional(z.object({name: z.string(), id: z.number()})),
     }),
     realm_avatar_changes_disabled: z.boolean(),
-    realm_bot_creation_policy: NOT_TYPED_YET,
+    realm_bot_creation_policy: z.number(),
     realm_bot_domain: z.string(),
     realm_can_access_all_users_group: z.number(),
     realm_can_create_public_channel_group: z.number(),
     realm_can_create_private_channel_group: z.number(),
+    realm_can_create_web_public_channel_group: z.number(),
+    realm_can_delete_any_message_group: z.number(),
     realm_create_multiuse_invite_group: z.number(),
     realm_create_private_stream_policy: z.number(),
-    realm_create_web_public_stream_policy: z.number(),
     realm_date_created: z.number(),
     realm_default_code_block_language: z.string(),
     realm_default_external_accounts: z.record(
@@ -278,6 +287,8 @@ const realm_schema = z.object({
     realm_description: z.string(),
     realm_digest_emails_enabled: NOT_TYPED_YET,
     realm_digest_weekday: NOT_TYPED_YET,
+    realm_direct_message_initiator_group: z.number(),
+    realm_direct_message_permission_group: z.number(),
     realm_disallow_disposable_email_addresses: z.boolean(),
     realm_domains: z.array(
         z.object({
@@ -291,7 +302,7 @@ const realm_schema = z.object({
     realm_emails_restricted_to_domains: z.boolean(),
     realm_embedded_bots: NOT_TYPED_YET,
     realm_enable_guest_user_indicator: z.boolean(),
-    realm_enable_read_receipts: NOT_TYPED_YET,
+    realm_enable_read_receipts: z.boolean(),
     realm_enable_spectator_access: z.boolean(),
     realm_giphy_rating: z.number(),
     realm_icon_source: z.string(),
@@ -345,7 +356,6 @@ const realm_schema = z.object({
         }),
     ),
     realm_presence_disabled: z.boolean(),
-    realm_private_message_policy: z.number(),
     realm_push_notifications_enabled: z.boolean(),
     realm_push_notifications_enabled_end_timestamp: NOT_TYPED_YET,
     realm_require_unique_names: z.boolean(),
@@ -373,6 +383,7 @@ const realm_schema = z.object({
         stream: z.record(group_permission_setting_schema),
         group: z.record(group_permission_setting_schema),
     }),
+    server_thumbnail_formats: z.array(thumbnail_format_schema),
     server_typing_started_expiry_period_milliseconds: z.number(),
     server_typing_started_wait_period_milliseconds: z.number(),
     server_typing_stopped_wait_period_milliseconds: z.number(),
@@ -396,7 +407,7 @@ export const state_data_schema = z
             .object({
                 realm_users: z.array(user_schema),
                 realm_non_active_users: z.array(user_schema),
-                cross_realm_bots: z.array(cross_realm_bot_schema),
+                cross_realm_bots: z.array(user_schema),
             })
             .transform((people) => ({people})),
     )

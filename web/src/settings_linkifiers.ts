@@ -16,6 +16,8 @@ import * as scroll_util from "./scroll_util";
 import * as settings_ui from "./settings_ui";
 import {current_user, realm} from "./state_data";
 import * as ui_report from "./ui_report";
+import * as ui_util from "./ui_util";
+import * as util from "./util";
 
 type RealmLinkifiers = typeof realm.realm_linkifiers;
 
@@ -106,6 +108,9 @@ function open_linkifier_edit_form(linkifier_id: number): void {
         on_click() {
             submit_linkifier_form(dialog_widget_id);
         },
+        on_shown() {
+            ui_util.place_caret_at_end(util.the($("#edit-linkifier-pattern")));
+        },
     });
 }
 
@@ -193,7 +198,7 @@ export function populate_linkifiers(linkifiers_data: RealmLinkifiers): void {
     });
 
     if (current_user.is_admin) {
-        new SortableJS($linkifiers_table[0]!, {
+        new SortableJS(util.the($linkifiers_table), {
             onUpdate: update_linkifiers_order,
             handle: ".move-handle",
             filter: "input",

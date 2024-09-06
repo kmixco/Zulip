@@ -123,7 +123,6 @@ test("basics", () => {
     assert.equal(stream_data.get_sub("web_public_stream"), web_public_stream);
     assert.ok(stream_data.is_web_public(web_public_stream.stream_id));
 
-    assert.deepEqual(stream_data.home_view_stream_names(), ["social"]);
     assert.deepEqual(stream_data.subscribed_streams(), ["social", "test"]);
     assert.deepEqual(stream_data.get_colors(), ["red", "yellow"]);
     assert.deepEqual(stream_data.subscribed_stream_ids(), [social.stream_id, test.stream_id]);
@@ -700,14 +699,6 @@ const jazy = {
     is_muted: true,
 };
 
-test("is_muted", () => {
-    stream_data.add_sub(tony);
-    stream_data.add_sub(jazy);
-    assert.ok(!stream_data.is_stream_muted_by_name("tony"));
-    assert.ok(stream_data.is_stream_muted_by_name("jazy"));
-    assert.ok(stream_data.is_stream_muted_by_name("EEXISTS"));
-});
-
 test("is_new_stream_announcements_stream_muted", () => {
     stream_data.add_sub(tony);
     stream_data.add_sub(jazy);
@@ -841,7 +832,15 @@ test("creator_id", () => {
     // When there is no creator
     assert.equal(stream_data.maybe_get_creator_details(null), undefined);
 
-    const creator_details = people.get_by_user_id(test_user.user_id);
+    let creator_details = {...people.get_by_user_id(test_user.user_id), is_active: true};
+    assert.deepStrictEqual(
+        stream_data.maybe_get_creator_details(test_user.user_id),
+        creator_details,
+    );
+
+    // Check when creator is deactivated.
+    people.deactivate(test_user);
+    creator_details = {...people.get_by_user_id(test_user.user_id), is_active: false};
     assert.deepStrictEqual(
         stream_data.maybe_get_creator_details(test_user.user_id),
         creator_details,

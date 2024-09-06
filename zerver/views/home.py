@@ -1,6 +1,5 @@
 import logging
 import secrets
-from typing import List, Optional, Tuple
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
@@ -21,7 +20,7 @@ from zerver.lib.subdomains import get_subdomain
 from zerver.models import Realm, RealmUserDefault, Stream, UserProfile
 
 
-def need_accept_tos(user_profile: Optional[UserProfile]) -> bool:
+def need_accept_tos(user_profile: UserProfile | None) -> bool:
     if user_profile is None:
         return False
 
@@ -101,14 +100,14 @@ def accounts_accept_terms(request: HttpRequest) -> HttpResponse:
 
 
 def detect_narrowed_window(
-    request: HttpRequest, user_profile: Optional[UserProfile]
-) -> Tuple[List[NarrowTerm], Optional[Stream], Optional[str]]:
+    request: HttpRequest, user_profile: UserProfile | None
+) -> tuple[list[NarrowTerm], Stream | None, str | None]:
     """This function implements Zulip's support for a mini Zulip window
     that just handles messages from a single narrow"""
     if user_profile is None:
         return [], None, None
 
-    narrow: List[NarrowTerm] = []
+    narrow: list[NarrowTerm] = []
     narrow_stream = None
     narrow_topic_name = request.GET.get("topic")
 
@@ -126,7 +125,7 @@ def detect_narrowed_window(
     return narrow, narrow_stream, narrow_topic_name
 
 
-def update_last_reminder(user_profile: Optional[UserProfile]) -> None:
+def update_last_reminder(user_profile: UserProfile | None) -> None:
     """Reset our don't-spam-users-with-email counter since the
     user has since logged in
     """
@@ -216,13 +215,6 @@ def home_real(request: HttpRequest) -> HttpResponse:
 
     narrow, narrow_stream, narrow_topic_name = detect_narrowed_window(request, user_profile)
 
-    if user_profile is not None:
-        needs_tutorial = user_profile.tutorial_status == UserProfile.TUTORIAL_WAITING
-
-    else:
-        # The current tutorial doesn't super make sense for logged-out users.
-        needs_tutorial = False
-
     queue_id, page_params = build_page_params_for_home_page_load(
         request=request,
         user_profile=user_profile,
@@ -231,7 +223,6 @@ def home_real(request: HttpRequest) -> HttpResponse:
         narrow=narrow,
         narrow_stream=narrow_stream,
         narrow_topic_name=narrow_topic_name,
-        needs_tutorial=needs_tutorial,
     )
 
     log_data = RequestNotes.get_notes(request).log_data
@@ -250,6 +241,10 @@ def home_real(request: HttpRequest) -> HttpResponse:
             "page_params": page_params,
             "csp_nonce": csp_nonce,
             "color_scheme": user_permission_info.color_scheme,
+            "enable_gravatar": settings.ENABLE_GRAVATAR,
+            "s3_avatar_public_url_prefix": settings.S3_AVATAR_PUBLIC_URL_PREFIX
+            if settings.LOCAL_UPLOADS_DIR is None
+            else "",
         },
     )
     patch_cache_control(response, no_cache=True, no_store=True, must_revalidate=True)
