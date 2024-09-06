@@ -114,11 +114,16 @@ run_test("verify wildcard mentions typeahead for stream message", () => {
     assert.equal(mention_topic.email, "topic");
     assert.equal(mention_topic.full_name, "topic");
 
-    assert.equal(mention_all.special_item_text, "all (translated: Notify channel)");
-    assert.equal(mention_everyone.special_item_text, "everyone (translated: Notify channel)");
-    assert.equal(mention_stream.special_item_text, "stream (translated: Notify channel)");
-    assert.equal(mention_channel.special_item_text, "channel (translated: Notify channel)");
-    assert.equal(mention_topic.special_item_text, "topic (translated: Notify topic)");
+    assert.equal(mention_all.special_item_text, "all");
+    assert.equal(mention_all.secondary_text, "translated: Notify channel");
+    assert.equal(mention_everyone.special_item_text, "everyone");
+    assert.equal(mention_everyone.secondary_text, "translated: Notify channel");
+    assert.equal(mention_stream.special_item_text, "stream");
+    assert.equal(mention_stream.secondary_text, "translated: Notify channel");
+    assert.equal(mention_channel.special_item_text, "channel");
+    assert.equal(mention_channel.secondary_text, "translated: Notify channel");
+    assert.equal(mention_topic.special_item_text, "topic");
+    assert.equal(mention_topic.secondary_text, "translated: Notify topic");
 
     compose_validate.stream_wildcard_mention_allowed = () => false;
     compose_validate.topic_wildcard_mention_allowed = () => true;
@@ -142,8 +147,10 @@ run_test("verify wildcard mentions typeahead for direct message", () => {
     assert.equal(mention_everyone.email, "everyone");
     assert.equal(mention_everyone.full_name, "everyone");
 
-    assert.equal(mention_all.special_item_text, "all (translated: Notify recipients)");
-    assert.equal(mention_everyone.special_item_text, "everyone (translated: Notify recipients)");
+    assert.equal(mention_all.special_item_text, "all");
+    assert.equal(mention_all.secondary_text, "translated: Notify recipients");
+    assert.equal(mention_everyone.special_item_text, "everyone");
+    assert.equal(mention_all.secondary_text, "translated: Notify recipients");
 });
 
 const emoji_stadium = {
@@ -225,8 +232,9 @@ const emojis_by_name = new Map(
 const me_command = {
     name: "me",
     aliases: "",
-    text: "translated: /me (Action message)",
+    text: "translated: /me",
     placeholder: "translated: is …",
+    info: "translated: Action message",
 };
 const me_command_item = slash_item(me_command);
 
@@ -239,14 +247,16 @@ const my_command_item = slash_item({
 const dark_command = {
     name: "dark",
     aliases: "night",
-    text: "translated: /dark (Switch to the dark theme)",
+    text: "translated: /dark",
+    info: "translated: Switch to the dark theme",
 };
 const dark_command_item = slash_item(dark_command);
 
 const light_command = {
     name: "light",
     aliases: "day",
-    text: "translated: /light (Switch to light theme)",
+    text: "translated: /light",
+    info: "translated: Switch to light theme",
 };
 const light_command_item = slash_item(light_command);
 
@@ -1701,15 +1711,17 @@ test("begins_typeahead", ({override, override_rewire}) => {
     assert_typeahead_equals("test no#o", []);
 
     const poll_command = {
-        text: "translated: /poll (Create a poll)",
+        text: "translated: /poll",
         name: "poll",
+        info: "translated: Create a poll",
         aliases: "",
         placeholder: "translated: Question",
         type: "slash",
     };
     const todo_command = {
-        text: "translated: /todo (Create a collaborative to-do list)",
+        text: "translated: /todo",
         name: "todo",
+        info: "translated: Create a collaborative to-do list",
         aliases: "",
         placeholder: "translated: Task list",
         type: "slash",
@@ -1896,12 +1908,14 @@ test("content_highlighter_html", ({override_rewire}) => {
     ct.get_or_set_completing_for_tests("slash");
     let th_render_slash_command_called = false;
     const me_slash = {
-        text: "/me (Action message)",
+        text: "/me",
         type: "slash",
+        info: "translated: Action message",
     };
     override_rewire(typeahead_helper, "render_typeahead_item", (item) => {
         assert.deepEqual(item, {
-            primary: "/me (Action message)",
+            primary: "/me",
+            secondary: "translated: Action message",
         });
         th_render_slash_command_called = true;
     });
