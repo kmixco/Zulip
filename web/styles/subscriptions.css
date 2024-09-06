@@ -684,6 +684,16 @@ h4.user_group_setting_subsection_title {
     }
 }
 
+.group_setting_disabled.pill-container {
+    cursor: not-allowed;
+
+    .pill {
+        .exit {
+            display: none;
+        }
+    }
+}
+
 #groups_overlay,
 #subscription_overlay {
     .tab-switcher {
@@ -1066,6 +1076,10 @@ div.settings-radio-input-parent {
         .inline {
             display: inline;
         }
+    }
+
+    .pill-container {
+        min-width: 325px;
     }
 }
 

@@ -7,7 +7,7 @@ import * as group_permission_settings from "./group_permission_settings";
 import {$t} from "./i18n";
 import {page_params} from "./page_params";
 import * as settings_config from "./settings_config";
-import type {StateData, user_group_schema} from "./state_data";
+import type {GroupSettingType, StateData, user_group_schema} from "./state_data";
 import {current_user} from "./state_data";
 import type {UserOrMention} from "./typeahead_helper";
 import type {UserGroupUpdateEvent} from "./types";
@@ -106,6 +106,14 @@ export function get_user_group_from_name(name: string): UserGroup | undefined {
 export function get_realm_user_groups(): UserGroup[] {
     const user_groups = [...user_group_by_id_dict.values()].sort((a, b) => a.id - b.id);
     return user_groups.filter((group) => !group.is_system_group);
+}
+
+// This is only used for testing currently, but would be used in
+// future when we use system groups more and probably show them
+// in the UI as well.
+export function get_all_realm_user_groups(): UserGroup[] {
+    const user_groups = [...user_group_by_id_dict.values()].sort((a, b) => a.id - b.id);
+    return user_groups;
 }
 
 export function get_user_groups_allowed_to_mention(): UserGroup[] {
@@ -284,6 +292,28 @@ export function is_user_in_group(user_group_id: number, user_id: number): boolea
     return false;
 }
 
+export function is_user_in_setting_group(
+    setting_group: GroupSettingType,
+    user_id: number,
+): boolean {
+    if (typeof setting_group === "number") {
+        return is_user_in_group(setting_group, user_id);
+    }
+
+    const direct_members = setting_group.direct_members;
+    if (direct_members.includes(user_id)) {
+        return true;
+    }
+
+    const direct_subgroups = setting_group.direct_subgroups;
+    for (const direct_subgroup_id of direct_subgroups) {
+        if (is_user_in_group(direct_subgroup_id, user_id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function get_display_name_for_system_group_option(setting_name: string, name: string): string {
     // We use a special label for the "Nobody" system group for clarity.
     if (setting_name === "direct_message_permission_group" && name === "Nobody") {
@@ -292,10 +322,10 @@ function get_display_name_for_system_group_option(setting_name: string, name: st
     return name;
 }
 
-export function get_realm_user_groups_for_dropdown_list_widget(
+export function get_realm_user_groups_for_setting(
     setting_name: string,
     setting_type: "realm" | "stream" | "group",
-): UserGroupForDropdownListWidget[] {
+): UserGroup[] {
     const group_setting_config = group_permission_settings.get_group_permission_setting_config(
         setting_name,
         setting_type,
@@ -343,10 +373,7 @@ export function get_realm_user_groups_for_dropdown_list_widget(
             if (!user_group) {
                 throw new Error(`Unknown group name: ${group.name}`);
             }
-            return {
-                name: get_display_name_for_system_group_option(setting_name, group.display_name),
-                unique_id: user_group.id,
-            };
+            return user_group;
         });
 
     if (
@@ -356,22 +383,44 @@ export function get_realm_user_groups_for_dropdown_list_widget(
         return system_user_groups;
     }
 
-    const user_groups_excluding_system_groups = get_realm_user_groups().map((group) => ({
-        name: group.name,
-        unique_id: group.id,
-    }));
+    const user_groups_excluding_system_groups = get_realm_user_groups();
 
     return [...system_user_groups, ...user_groups_excluding_system_groups];
 }
 
-// Group name for user-facing display. For settings, we already use
-// description strings for system groups. But those description strings
-// might not be suitable for every case, e.g. we want the name for
-// `role:everyone` to be `Everyone` instead of
-// `Admins, moderators, members and guests` from `settings_config`.
-// Right now, we only change the name for `role:everyone`, that's why
-// we don't store the values in a structured way like
-// `settings_config` yet.
-export function get_display_group_name(user_group: UserGroup): string {
-    return user_group.name === "role:everyone" ? $t({defaultMessage: "Everyone"}) : user_group.name;
+export function get_realm_user_groups_for_dropdown_list_widget(
+    setting_name: string,
+    setting_type: "realm" | "stream" | "group",
+): UserGroupForDropdownListWidget[] {
+    const allowed_setting_groups = get_realm_user_groups_for_setting(setting_name, setting_type);
+
+    return allowed_setting_groups.map((group) => {
+        if (!group.is_system_group) {
+            return {
+                name: group.name,
+                unique_id: group.id,
+            };
+        }
+
+        const display_name = settings_config.system_user_groups_list.find(
+            (system_group) => system_group.name === group.name,
+        )!.dropdown_option_name;
+
+        return {
+            name: get_display_name_for_system_group_option(setting_name, display_name),
+            unique_id: group.id,
+        };
+    });
+}
+
+export function get_display_group_name(group_name: string): string {
+    const group = settings_config.system_user_groups_list.find(
+        (system_group) => system_group.name === group_name,
+    );
+
+    if (group === undefined) {
+        return group_name;
+    }
+
+    return group.display_name;
 }

@@ -303,6 +303,25 @@ run_test("is_user_in_group", () => {
     assert.equal(user_groups.is_user_in_group(foo.id, 6), true);
     assert.equal(user_groups.is_user_in_group(foo.id, 3), false);
 
+    assert.equal(user_groups.is_user_in_setting_group(test.id, 4), true);
+    assert.equal(user_groups.is_user_in_setting_group(test.id, 1), true);
+    assert.equal(user_groups.is_user_in_setting_group(test.id, 6), true);
+    assert.equal(user_groups.is_user_in_setting_group(test.id, 3), false);
+
+    const anonymous_setting_group = {
+        direct_members: [8, 9],
+        direct_subgroups: [admins.id, test.id],
+    };
+    assert.equal(user_groups.is_user_in_setting_group(anonymous_setting_group, 8), true);
+    assert.equal(user_groups.is_user_in_setting_group(anonymous_setting_group, 9), true);
+    assert.equal(user_groups.is_user_in_setting_group(anonymous_setting_group, 10), false);
+
+    assert.equal(user_groups.is_user_in_setting_group(anonymous_setting_group, 1), true);
+    assert.equal(user_groups.is_user_in_setting_group(anonymous_setting_group, 4), true);
+    assert.equal(user_groups.is_user_in_setting_group(anonymous_setting_group, 6), true);
+    assert.equal(user_groups.is_user_in_setting_group(anonymous_setting_group, 2), false);
+    assert.equal(user_groups.is_user_in_setting_group(anonymous_setting_group, 3), false);
+
     blueslip.expect("error", "Could not find user group");
     assert.equal(user_groups.is_user_in_group(1111, 3), false);
 
@@ -476,7 +495,7 @@ run_test("get_realm_user_groups_for_dropdown_list_widget", () => {
 
 run_test("get_display_group_name", () => {
     const admins = {
-        name: "Admins",
+        name: "role:administrators",
         description: "foo",
         id: 1,
         members: new Set([1]),
@@ -490,7 +509,19 @@ run_test("get_display_group_name", () => {
         is_system_group: false,
         direct_subgroup_ids: new Set([1]),
     };
+    const students = {
+        name: "Students",
+        id: 3,
+        members: new Set([1, 3]),
+        is_system_group: false,
+        direct_subgroup_ids: new Set([]),
+    };
 
-    assert.equal(user_groups.get_display_group_name(admins), "Admins");
-    assert.equal(user_groups.get_display_group_name(all), "translated: Everyone");
+    user_groups.initialize({
+        realm_user_groups: [admins, all, students],
+    });
+
+    assert.equal(user_groups.get_display_group_name(admins.name), "translated: Admins");
+    assert.equal(user_groups.get_display_group_name(all.name), "translated: Everyone");
+    assert.equal(user_groups.get_display_group_name(students.name), "Students");
 });

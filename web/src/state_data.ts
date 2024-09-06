@@ -126,6 +126,15 @@ export const server_emoji_schema = z.object({
 
 export const realm_emoji_map_schema = z.record(server_emoji_schema);
 
+export const anonymous_group_type = z.object({
+    direct_subgroups: z.array(z.number()),
+    direct_members: z.array(z.number()),
+});
+
+export const group_setting_type_schema = z.union([z.number(), anonymous_group_type]);
+
+export type GroupSettingType = z.infer<typeof group_setting_type_schema>;
+
 export const user_group_schema = z.object({
     description: z.string(),
     id: z.number(),
@@ -133,7 +142,7 @@ export const user_group_schema = z.object({
     members: z.array(z.number()),
     is_system_group: z.boolean(),
     direct_subgroup_ids: z.array(z.number()),
-    can_manage_group: z.number(),
+    can_manage_group: group_setting_type_schema,
     can_mention_group: z.number(),
 });
 
