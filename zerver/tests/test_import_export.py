@@ -92,6 +92,7 @@ from zerver.models import (
 from zerver.models.clients import get_client
 from zerver.models.groups import SystemGroups
 from zerver.models.presence import PresenceSequence
+from zerver.models.realm_audit_logs import AuditLogEventType
 from zerver.models.realms import get_realm
 from zerver.models.recipients import get_direct_message_group_hash
 from zerver.models.streams import get_active_streams, get_stream
@@ -370,7 +371,9 @@ class RealmImportExportTest(ExportFile):
         public_only: bool = False,
     ) -> None:
         RealmAuditLog.objects.create(
-            realm=original_realm, event_type=RealmAuditLog.REALM_EXPORTED, event_time=timezone_now()
+            realm=original_realm,
+            event_type=AuditLogEventType.REALM_EXPORTED,
+            event_time=timezone_now(),
         )
         self.export_realm(original_realm, exportable_user_ids, consent_message_id, public_only)
 
@@ -834,12 +837,12 @@ class RealmImportExportTest(ExportFile):
         # by the export, so we'll test that it is handled by getting set to None.
         self.assertTrue(
             RealmAuditLog.objects.filter(
-                modified_user=hamlet, event_type=RealmAuditLog.USER_CREATED
+                modified_user=hamlet, event_type=AuditLogEventType.USER_CREATED
             ).count(),
             1,
         )
         RealmAuditLog.objects.filter(
-            modified_user=hamlet, event_type=RealmAuditLog.USER_CREATED
+            modified_user=hamlet, event_type=AuditLogEventType.USER_CREATED
         ).update(acting_user_id=cross_realm_bot.id)
 
         # data to test import of direct message groups
@@ -994,7 +997,9 @@ class RealmImportExportTest(ExportFile):
         new_realm_emoji.save()
 
         RealmAuditLog.objects.create(
-            realm=original_realm, event_type=RealmAuditLog.REALM_EXPORTED, event_time=timezone_now()
+            realm=original_realm,
+            event_type=AuditLogEventType.REALM_EXPORTED,
+            event_time=timezone_now(),
         )
 
         getters = self.get_realm_getters()
@@ -1142,7 +1147,7 @@ class RealmImportExportTest(ExportFile):
 
         imported_hamlet = get_user_by_delivery_email(hamlet.delivery_email, imported_realm)
         realmauditlog = RealmAuditLog.objects.get(
-            modified_user=imported_hamlet, event_type=RealmAuditLog.USER_CREATED
+            modified_user=imported_hamlet, event_type=AuditLogEventType.USER_CREATED
         )
         self.assertEqual(realmauditlog.realm, imported_realm)
         # As explained above when setting up the RealmAuditLog row, the .acting_user should have been
@@ -1318,9 +1323,9 @@ class RealmImportExportTest(ExportFile):
         def get_realm_audit_log_event_type(r: Realm) -> set[int]:
             realmauditlogs = RealmAuditLog.objects.filter(realm=r).exclude(
                 event_type__in=[
-                    RealmAuditLog.REALM_PLAN_TYPE_CHANGED,
-                    RealmAuditLog.STREAM_CREATED,
-                    RealmAuditLog.REALM_IMPORTED,
+                    AuditLogEventType.REALM_PLAN_TYPE_CHANGED,
+                    AuditLogEventType.CHANNEL_CREATED,
+                    AuditLogEventType.REALM_IMPORTED,
                 ]
             )
             realmauditlog_event_type = {log.event_type for log in realmauditlogs}
@@ -1870,7 +1875,7 @@ class RealmImportExportTest(ExportFile):
             self.assertEqual(imported_realm.message_visibility_limit, 10000)
             self.assertTrue(
                 RealmAuditLog.objects.filter(
-                    realm=imported_realm, event_type=RealmAuditLog.REALM_PLAN_TYPE_CHANGED
+                    realm=imported_realm, event_type=AuditLogEventType.REALM_PLAN_TYPE_CHANGED
                 ).exists()
             )
 
@@ -1887,7 +1892,7 @@ class RealmImportExportTest(ExportFile):
             self.assertEqual(imported_realm.message_visibility_limit, None)
             self.assertTrue(
                 RealmAuditLog.objects.filter(
-                    realm=imported_realm, event_type=RealmAuditLog.REALM_PLAN_TYPE_CHANGED
+                    realm=imported_realm, event_type=AuditLogEventType.REALM_PLAN_TYPE_CHANGED
                 ).exists()
             )
 
@@ -1915,7 +1920,7 @@ class RealmImportExportTest(ExportFile):
             imported_realm = do_import_realm(get_output_dir(), "test-zulip-1")
         user_membership_logs = RealmAuditLog.objects.filter(
             realm=imported_realm,
-            event_type=RealmAuditLog.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
+            event_type=AuditLogEventType.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
         ).values_list("modified_user_id", "modified_user_group__name")
         logged_membership_by_user_id = defaultdict(set)
         for user_id, user_group_name in user_membership_logs:

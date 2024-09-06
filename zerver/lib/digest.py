@@ -30,6 +30,7 @@ from zerver.models import (
     UserActivityInterval,
     UserProfile,
 )
+from zerver.models.realm_audit_logs import AuditLogEventType
 from zerver.models.streams import get_active_streams
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ def _enqueue_emails_for_realm(realm: Realm, cutoff: datetime) -> None:
             sent_recent_digest=Exists(
                 RealmAuditLog.objects.filter(
                     realm_id=realm.id,
-                    event_type=RealmAuditLog.USER_DIGEST_EMAIL_CREATED,
+                    event_type=AuditLogEventType.USER_DIGEST_EMAIL_CREATED,
                     event_time__gt=twelve_hours_ago,
                     modified_user_id=OuterRef("id"),
                 )
@@ -285,9 +286,9 @@ def get_user_stream_map(user_ids: list[int], cutoff_date: datetime) -> dict[int,
     bugs for any of those classes of users.
     """
     events = [
-        RealmAuditLog.SUBSCRIPTION_CREATED,
-        RealmAuditLog.SUBSCRIPTION_ACTIVATED,
-        RealmAuditLog.SUBSCRIPTION_DEACTIVATED,
+        AuditLogEventType.SUBSCRIPTION_CREATED,
+        AuditLogEventType.SUBSCRIPTION_ACTIVATED,
+        AuditLogEventType.SUBSCRIPTION_DEACTIVATED,
     ]
     # This uses the zerver_realmauditlog_user_subscriptions_idx
     # partial index on RealmAuditLog which is specifically for those
@@ -434,7 +435,7 @@ def bulk_write_realm_audit_logs(users: list[UserProfile]) -> None:
             modified_user_id=user.id,
             event_last_message_id=last_message_id,
             event_time=now,
-            event_type=RealmAuditLog.USER_DIGEST_EMAIL_CREATED,
+            event_type=AuditLogEventType.USER_DIGEST_EMAIL_CREATED,
         )
         for user in users
     ]

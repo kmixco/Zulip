@@ -19,6 +19,7 @@ from zerver.models import (
     UserProfile,
 )
 from zerver.models.groups import SystemGroups
+from zerver.models.realm_audit_logs import AuditLogEventType
 
 
 def bulk_create_users(
@@ -96,7 +97,7 @@ def bulk_create_users(
         RealmAuditLog(
             realm=realm,
             modified_user=profile_,
-            event_type=RealmAuditLog.USER_CREATED,
+            event_type=AuditLogEventType.USER_CREATED,
             event_time=profile_.date_joined,
         )
         for profile_ in profiles_to_create
@@ -153,7 +154,7 @@ def bulk_create_users(
             realm=realm,
             modified_user=membership.user_profile,
             modified_user_group=membership.user_group.named_user_group,
-            event_type=RealmAuditLog.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
+            event_type=AuditLogEventType.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
             event_time=now,
             acting_user=None,
         )

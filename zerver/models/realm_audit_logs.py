@@ -1,3 +1,5 @@
+from enum import IntEnum, unique
+
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.db.models import CASCADE, Q
@@ -9,25 +11,8 @@ from zerver.models.streams import Stream
 from zerver.models.users import UserProfile
 
 
-class AbstractRealmAuditLog(models.Model):
-    """Defines fields common to RealmAuditLog and RemoteRealmAuditLog."""
-
-    event_time = models.DateTimeField(db_index=True)
-    # If True, event_time is an overestimate of the true time. Can be used
-    # by migrations when introducing a new event_type.
-    backfilled = models.BooleanField(default=False)
-
-    # Keys within extra_data, when extra_data is a json dict. Keys are strings because
-    # json keys must always be strings.
-    OLD_VALUE = "1"
-    NEW_VALUE = "2"
-    ROLE_COUNT = "10"
-    ROLE_COUNT_HUMANS = "11"
-    ROLE_COUNT_BOTS = "12"
-
-    extra_data = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
-
-    # Event types
+@unique
+class AuditLogEventType(IntEnum):
     USER_CREATED = 101
     USER_ACTIVATED = 102
     USER_DEACTIVATED = 103
@@ -101,13 +86,13 @@ class AbstractRealmAuditLog(models.Model):
     CUSTOMER_PROPERTY_CHANGED = 505
     CUSTOMER_PLAN_PROPERTY_CHANGED = 506
 
-    STREAM_CREATED = 601
-    STREAM_DEACTIVATED = 602
-    STREAM_NAME_CHANGED = 603
-    STREAM_REACTIVATED = 604
-    STREAM_MESSAGE_RETENTION_DAYS_CHANGED = 605
-    STREAM_PROPERTY_CHANGED = 607
-    STREAM_GROUP_BASED_SETTING_CHANGED = 608
+    CHANNEL_CREATED = 601
+    CHANNEL_DEACTIVATED = 602
+    CHANNEL_NAME_CHANGED = 603
+    CHANNEL_REACTIVATED = 604
+    CHANNEL_MESSAGE_RETENTION_DAYS_CHANGED = 605
+    CHANNEL_PROPERTY_CHANGED = 607
+    CHANNEL_GROUP_BASED_SETTING_CHANGED = 608
 
     USER_GROUP_CREATED = 701
     USER_GROUP_DELETED = 702
@@ -122,9 +107,9 @@ class AbstractRealmAuditLog(models.Model):
     USER_GROUP_DESCRIPTION_CHANGED = 721
     USER_GROUP_GROUP_BASED_SETTING_CHANGED = 722
 
-    # The following values are only for RemoteZulipServerAuditLog
+    # The following values are only for remote server/realm logs.
     # Values should be exactly 10000 greater than the corresponding
-    # value used for the same purpose in RealmAuditLog (e.g.
+    # value used for the same purpose in realm audit logs (e.g.,
     # REALM_DEACTIVATED = 201, and REMOTE_SERVER_DEACTIVATED = 10201).
     REMOTE_SERVER_DEACTIVATED = 10201
     REMOTE_SERVER_REACTIVATED = 10202
@@ -143,20 +128,40 @@ class AbstractRealmAuditLog(models.Model):
     REMOTE_REALM_LOCALLY_DELETED = 20003
     REMOTE_REALM_LOCALLY_DELETED_RESTORED = 20004
 
+
+class AbstractRealmAuditLog(models.Model):
+    """Defines fields common to RealmAuditLog and RemoteRealmAuditLog."""
+
+    event_time = models.DateTimeField(db_index=True)
+    # If True, event_time is an overestimate of the true time. Can be used
+    # by migrations when introducing a new event_type.
+    backfilled = models.BooleanField(default=False)
+
+    # Keys within extra_data, when extra_data is a json dict. Keys are strings because
+    # json keys must always be strings.
+    OLD_VALUE = "1"
+    NEW_VALUE = "2"
+    ROLE_COUNT = "10"
+    ROLE_COUNT_HUMANS = "11"
+    ROLE_COUNT_BOTS = "12"
+
+    extra_data = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+
+    # See AuditLogEventType class above.
     event_type = models.PositiveSmallIntegerField()
 
     # event_types synced from on-prem installations to Zulip Cloud when
     # billing for mobile push notifications is enabled.  Every billing
     # event_type should have ROLE_COUNT populated in extra_data.
     SYNCED_BILLING_EVENTS = [
-        USER_CREATED,
-        USER_ACTIVATED,
-        USER_DEACTIVATED,
-        USER_REACTIVATED,
-        USER_ROLE_CHANGED,
-        REALM_DEACTIVATED,
-        REALM_REACTIVATED,
-        REALM_IMPORTED,
+        AuditLogEventType.USER_CREATED,
+        AuditLogEventType.USER_ACTIVATED,
+        AuditLogEventType.USER_DEACTIVATED,
+        AuditLogEventType.USER_REACTIVATED,
+        AuditLogEventType.USER_ROLE_CHANGED,
+        AuditLogEventType.REALM_DEACTIVATED,
+        AuditLogEventType.REALM_REACTIVATED,
+        AuditLogEventType.REALM_IMPORTED,
     ]
 
     HOW_REALM_CREATOR_FOUND_ZULIP_OPTIONS = {
@@ -234,9 +239,9 @@ class RealmAuditLog(AbstractRealmAuditLog):
                 fields=["modified_user", "modified_stream"],
                 condition=Q(
                     event_type__in=[
-                        AbstractRealmAuditLog.SUBSCRIPTION_CREATED,
-                        AbstractRealmAuditLog.SUBSCRIPTION_ACTIVATED,
-                        AbstractRealmAuditLog.SUBSCRIPTION_DEACTIVATED,
+                        AuditLogEventType.SUBSCRIPTION_CREATED,
+                        AuditLogEventType.SUBSCRIPTION_ACTIVATED,
+                        AuditLogEventType.SUBSCRIPTION_DEACTIVATED,
                     ]
                 ),
             ),
@@ -246,10 +251,10 @@ class RealmAuditLog(AbstractRealmAuditLog):
                 fields=["modified_user", "event_time"],
                 condition=Q(
                     event_type__in=[
-                        AbstractRealmAuditLog.USER_CREATED,
-                        AbstractRealmAuditLog.USER_ACTIVATED,
-                        AbstractRealmAuditLog.USER_DEACTIVATED,
-                        AbstractRealmAuditLog.USER_REACTIVATED,
+                        AuditLogEventType.USER_CREATED,
+                        AuditLogEventType.USER_ACTIVATED,
+                        AuditLogEventType.USER_DEACTIVATED,
+                        AuditLogEventType.USER_REACTIVATED,
                     ]
                 ),
             ),
@@ -257,10 +262,13 @@ class RealmAuditLog(AbstractRealmAuditLog):
 
     @override
     def __str__(self) -> str:
+        event_type_name = AuditLogEventType(self.event_type).name
         if self.modified_user is not None:
-            return f"{self.modified_user!r} {self.event_type} {self.event_time} {self.id}"
+            return f"{event_type_name} {self.event_time} (id={self.id}): {self.modified_user!r}"
         if self.modified_stream is not None:
-            return f"{self.modified_stream!r} {self.event_type} {self.event_time} {self.id}"
+            return f"{event_type_name} {self.event_time} (id={self.id}): {self.modified_stream!r}"
         if self.modified_user_group is not None:
-            return f"{self.modified_user_group!r} {self.event_type} {self.event_time} {self.id}"
-        return f"{self.realm!r} {self.event_type} {self.event_time} {self.id}"
+            return (
+                f"{event_type_name} {self.event_time} (id={self.id}): {self.modified_user_group!r}"
+            )
+        return f"{event_type_name} {self.event_time} (id={self.id}): {self.realm!r}"

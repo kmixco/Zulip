@@ -9,6 +9,7 @@ from corporate.lib.stripe import add_months
 from corporate.models import Customer, CustomerPlan, LicenseLedger
 from zerver.lib.test_classes import ZulipTestCase
 from zerver.models import Client, UserActivity, UserProfile
+from zerver.models.realm_audit_logs import AuditLogEventType
 from zilencer.models import (
     RemoteRealm,
     RemoteRealmAuditLog,
@@ -23,7 +24,7 @@ data_list = [
     {
         "server_id": 1,
         "realm_id": 1,
-        "event_type": RemoteRealmAuditLog.USER_CREATED,
+        "event_type": AuditLogEventType.USER_CREATED,
         "event_time": event_time,
         "extra_data": {
             RemoteRealmAuditLog.ROLE_COUNT: {
@@ -40,7 +41,7 @@ data_list = [
     {
         "server_id": 1,
         "realm_id": 1,
-        "event_type": RemoteRealmAuditLog.USER_ROLE_CHANGED,
+        "event_type": AuditLogEventType.USER_ROLE_CHANGED,
         "event_time": event_time,
         "extra_data": {
             RemoteRealmAuditLog.ROLE_COUNT: {
@@ -57,7 +58,7 @@ data_list = [
     {
         "server_id": 1,
         "realm_id": 2,
-        "event_type": RemoteRealmAuditLog.USER_CREATED,
+        "event_type": AuditLogEventType.USER_CREATED,
         "event_time": event_time,
         "extra_data": {
             RemoteRealmAuditLog.ROLE_COUNT: {
@@ -74,14 +75,14 @@ data_list = [
     {
         "server_id": 1,
         "realm_id": 2,
-        "event_type": RemoteRealmAuditLog.USER_CREATED,
+        "event_type": AuditLogEventType.USER_CREATED,
         "event_time": event_time,
         "extra_data": {},
     },
     {
         "server_id": 1,
         "realm_id": 3,
-        "event_type": RemoteRealmAuditLog.USER_CREATED,
+        "event_type": AuditLogEventType.USER_CREATED,
         "event_time": event_time,
         "extra_data": {
             RemoteRealmAuditLog.ROLE_COUNT: {
@@ -98,7 +99,7 @@ data_list = [
     {
         "server_id": 1,
         "realm_id": 3,
-        "event_type": RemoteRealmAuditLog.USER_DEACTIVATED,
+        "event_type": AuditLogEventType.USER_DEACTIVATED,
         "event_time": event_time + timedelta(seconds=1),
         "extra_data": {
             RemoteRealmAuditLog.ROLE_COUNT: {
@@ -169,7 +170,7 @@ class ActivityTest(ZulipTestCase):
             contact_email="email@example.com",
         )
         RemoteZulipServerAuditLog.objects.create(
-            event_type=RemoteZulipServerAuditLog.REMOTE_SERVER_CREATED,
+            event_type=AuditLogEventType.REMOTE_SERVER_CREATED,
             server=server,
             event_time=server.last_updated,
         )
@@ -187,7 +188,7 @@ class ActivityTest(ZulipTestCase):
         RemoteRealmAuditLog.objects.create(
             server=server,
             realm_id=10,
-            event_type=RemoteRealmAuditLog.USER_CREATED,
+            event_type=AuditLogEventType.USER_CREATED,
             event_time=timezone_now() - timedelta(days=1),
             extra_data=extra_data,
         )
@@ -283,7 +284,7 @@ class ActivityTest(ZulipTestCase):
                 RemoteRealmAuditLog.objects.create(
                     server=server,
                     remote_realm=remote_realm,
-                    event_type=RemoteRealmAuditLog.USER_CREATED,
+                    event_type=AuditLogEventType.USER_CREATED,
                     event_time=timezone_now() - timedelta(days=1),
                     extra_data=extra_data,
                 )
@@ -291,7 +292,7 @@ class ActivityTest(ZulipTestCase):
                 RemoteRealmAuditLog.objects.create(
                     server=server,
                     realm_id=realm_id,
-                    event_type=RemoteRealmAuditLog.USER_CREATED,
+                    event_type=AuditLogEventType.USER_CREATED,
                     event_time=timezone_now() - timedelta(days=1),
                     extra_data=extra_data,
                 )
@@ -302,7 +303,7 @@ class ActivityTest(ZulipTestCase):
                 hostname=hostname, contact_email=f"admin@{hostname}", uuid=uuid.uuid4()
             )
             RemoteZulipServerAuditLog.objects.create(
-                event_type=RemoteZulipServerAuditLog.REMOTE_SERVER_CREATED,
+                event_type=AuditLogEventType.REMOTE_SERVER_CREATED,
                 server=remote_server,
                 event_time=remote_server.last_updated,
             )

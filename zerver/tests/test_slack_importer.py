@@ -50,6 +50,7 @@ from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.test_helpers import read_test_image_file
 from zerver.lib.topic import EXPORT_TOPIC_NAME
 from zerver.models import Message, Realm, RealmAuditLog, Recipient, UserProfile
+from zerver.models.realm_audit_logs import AuditLogEventType
 from zerver.models.realms import get_realm
 
 
@@ -1354,15 +1355,15 @@ class SlackImporter(ZulipTestCase):
         self.assertEqual(
             realmauditlog_event_type,
             {
-                RealmAuditLog.SUBSCRIPTION_CREATED,
-                RealmAuditLog.REALM_PLAN_TYPE_CHANGED,
-                RealmAuditLog.REALM_PROPERTY_CHANGED,
-                RealmAuditLog.REALM_CREATED,
-                RealmAuditLog.REALM_IMPORTED,
-                RealmAuditLog.USER_GROUP_CREATED,
-                RealmAuditLog.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
-                RealmAuditLog.USER_GROUP_DIRECT_SUBGROUP_MEMBERSHIP_ADDED,
-                RealmAuditLog.USER_GROUP_DIRECT_SUPERGROUP_MEMBERSHIP_ADDED,
+                AuditLogEventType.SUBSCRIPTION_CREATED,
+                AuditLogEventType.REALM_PLAN_TYPE_CHANGED,
+                AuditLogEventType.REALM_PROPERTY_CHANGED,
+                AuditLogEventType.REALM_CREATED,
+                AuditLogEventType.REALM_IMPORTED,
+                AuditLogEventType.USER_GROUP_CREATED,
+                AuditLogEventType.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
+                AuditLogEventType.USER_GROUP_DIRECT_SUBGROUP_MEMBERSHIP_ADDED,
+                AuditLogEventType.USER_GROUP_DIRECT_SUPERGROUP_MEMBERSHIP_ADDED,
             },
         )
 

@@ -25,6 +25,7 @@ from zerver.models import (
     UserMessage,
     UserProfile,
 )
+from zerver.models.realm_audit_logs import AuditLogEventType
 from zerver.models.scheduled_jobs import NotificationTriggers
 
 logger = logging.getLogger("zulip.soft_deactivation")
@@ -72,7 +73,7 @@ def filter_by_subscription_history(
 
             event_last_message_id = assert_is_not_none(log_entry.event_last_message_id)
 
-            if log_entry.event_type == RealmAuditLog.SUBSCRIPTION_DEACTIVATED:
+            if log_entry.event_type == AuditLogEventType.SUBSCRIPTION_DEACTIVATED:
                 # If the event shows the user was unsubscribed after
                 # event_last_message_id, we know they must have been
                 # subscribed immediately before the event.
@@ -82,8 +83,8 @@ def filter_by_subscription_history(
                     else:
                         break
             elif log_entry.event_type in (
-                RealmAuditLog.SUBSCRIPTION_ACTIVATED,
-                RealmAuditLog.SUBSCRIPTION_CREATED,
+                AuditLogEventType.SUBSCRIPTION_ACTIVATED,
+                AuditLogEventType.SUBSCRIPTION_CREATED,
             ):
                 initial_msg_count = len(stream_messages)
                 for i, stream_message in enumerate(stream_messages):
@@ -103,8 +104,8 @@ def filter_by_subscription_history(
         # event was a subscription_deactivated then we don't want to create
         # UserMessage rows for any of the remaining messages.
         if len(stream_messages) > 0 and stream_subscription_logs[-1].event_type in (
-            RealmAuditLog.SUBSCRIPTION_ACTIVATED,
-            RealmAuditLog.SUBSCRIPTION_CREATED,
+            AuditLogEventType.SUBSCRIPTION_ACTIVATED,
+            AuditLogEventType.SUBSCRIPTION_CREATED,
         ):
             message_ids.update(stream_message["id"] for stream_message in stream_messages)
     return sorted(message_ids)
@@ -164,9 +165,9 @@ def add_missing_messages(user_profile: UserProfile) -> None:
     # this set changes, the partial index must be updated as well, to
     # keep this query performant
     events = [
-        RealmAuditLog.SUBSCRIPTION_CREATED,
-        RealmAuditLog.SUBSCRIPTION_DEACTIVATED,
-        RealmAuditLog.SUBSCRIPTION_ACTIVATED,
+        AuditLogEventType.SUBSCRIPTION_CREATED,
+        AuditLogEventType.SUBSCRIPTION_DEACTIVATED,
+        AuditLogEventType.SUBSCRIPTION_ACTIVATED,
     ]
 
     # Important: We order first by event_last_message_id, which is the
@@ -192,7 +193,7 @@ def add_missing_messages(user_profile: UserProfile) -> None:
     recipient_ids = []
     for sub in all_stream_subs:
         stream_subscription_logs = all_stream_subscription_logs[sub["recipient__type_id"]]
-        if stream_subscription_logs[-1].event_type == RealmAuditLog.SUBSCRIPTION_DEACTIVATED:
+        if stream_subscription_logs[-1].event_type == AuditLogEventType.SUBSCRIPTION_DEACTIVATED:
             assert stream_subscription_logs[-1].event_last_message_id is not None
             if (
                 stream_subscription_logs[-1].event_last_message_id
@@ -284,7 +285,7 @@ def do_soft_deactivate_users(
                 log = RealmAuditLog(
                     realm=user.realm,
                     modified_user=user,
-                    event_type=RealmAuditLog.USER_SOFT_DEACTIVATED,
+                    event_type=AuditLogEventType.USER_SOFT_DEACTIVATED,
                     event_time=event_time,
                 )
                 realm_logs.append(log)
@@ -324,7 +325,7 @@ def reactivate_user_if_soft_deactivated(user_profile: UserProfile) -> UserProfil
         RealmAuditLog.objects.create(
             realm=user_profile.realm,
             modified_user=user_profile,
-            event_type=RealmAuditLog.USER_SOFT_ACTIVATED,
+            event_type=AuditLogEventType.USER_SOFT_ACTIVATED,
             event_time=timezone_now(),
         )
         logger.info("Soft reactivated user %s", user_profile.id)

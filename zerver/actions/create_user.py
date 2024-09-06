@@ -58,6 +58,7 @@ from zerver.models import (
     UserProfile,
 )
 from zerver.models.groups import SystemGroups
+from zerver.models.realm_audit_logs import AuditLogEventType
 from zerver.models.users import active_user_ids, bot_owner_user_ids, get_system_bot
 from zerver.tornado.django_api import send_event_on_commit
 
@@ -539,7 +540,7 @@ def do_create_user(
             realm=user_profile.realm,
             acting_user=acting_user,
             modified_user=user_profile,
-            event_type=RealmAuditLog.USER_CREATED,
+            event_type=AuditLogEventType.USER_CREATED,
             event_time=event_time,
             extra_data={
                 RealmAuditLog.ROLE_COUNT: realm_user_count_by_role(user_profile.realm),
@@ -551,7 +552,9 @@ def do_create_user(
             # If this user just created a realm, make sure they are
             # properly tagged as the creator of the realm.
             realm_creation_audit_log = (
-                RealmAuditLog.objects.filter(event_type=RealmAuditLog.REALM_CREATED, realm=realm)
+                RealmAuditLog.objects.filter(
+                    event_type=AuditLogEventType.REALM_CREATED, realm=realm
+                )
                 .order_by("id")
                 .last()
             )
@@ -569,7 +572,7 @@ def do_create_user(
             realm=user_profile.realm,
             modified_user=user_profile,
             modified_user_group=system_user_group,
-            event_type=RealmAuditLog.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
+            event_type=AuditLogEventType.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
             event_time=event_time,
             acting_user=acting_user,
         )
@@ -587,7 +590,7 @@ def do_create_user(
                 realm=user_profile.realm,
                 modified_user=user_profile,
                 modified_user_group=full_members_system_group,
-                event_type=RealmAuditLog.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
+                event_type=AuditLogEventType.USER_GROUP_DIRECT_USER_MEMBERSHIP_ADDED,
                 event_time=event_time,
                 acting_user=acting_user,
             )
@@ -655,7 +658,7 @@ def do_activate_mirror_dummy_user(
             realm=user_profile.realm,
             modified_user=user_profile,
             acting_user=acting_user,
-            event_type=RealmAuditLog.USER_ACTIVATED,
+            event_type=AuditLogEventType.USER_ACTIVATED,
             event_time=event_time,
             extra_data={
                 RealmAuditLog.ROLE_COUNT: realm_user_count_by_role(user_profile.realm),
@@ -683,7 +686,7 @@ def do_reactivate_user(user_profile: UserProfile, *, acting_user: UserProfile | 
         realm=user_profile.realm,
         modified_user=user_profile,
         acting_user=acting_user,
-        event_type=RealmAuditLog.USER_REACTIVATED,
+        event_type=AuditLogEventType.USER_REACTIVATED,
         event_time=event_time,
         extra_data={
             RealmAuditLog.ROLE_COUNT: realm_user_count_by_role(user_profile.realm),
@@ -705,7 +708,7 @@ def do_reactivate_user(user_profile: UserProfile, *, acting_user: UserProfile | 
             realm=user_profile.realm,
             acting_user=acting_user,
             modified_user=user_profile,
-            event_type=RealmAuditLog.USER_BOT_OWNER_CHANGED,
+            event_type=AuditLogEventType.USER_BOT_OWNER_CHANGED,
             event_time=event_time,
         )
         bot_owner_changed = True

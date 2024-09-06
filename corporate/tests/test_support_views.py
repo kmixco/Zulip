@@ -30,6 +30,7 @@ from zerver.actions.user_settings import do_change_user_setting
 from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.test_helpers import reset_email_visibility_to_everyone_in_zulip_realm
 from zerver.models import MultiuseInvite, PreregistrationUser, Realm, UserMessage, UserProfile
+from zerver.models.realm_audit_logs import AuditLogEventType
 from zerver.models.realms import OrgTypeEnum, get_org_type_display_name, get_realm
 from zilencer.lib.remote_counts import MissingDataError
 
@@ -115,7 +116,7 @@ class TestRemoteServerSupportEndpoint(ZulipTestCase):
                 hostname=hostname, contact_email=f"admin@{hostname}", uuid=uuid.uuid4()
             )
             RemoteZulipServerAuditLog.objects.create(
-                event_type=RemoteZulipServerAuditLog.REMOTE_SERVER_CREATED,
+                event_type=AuditLogEventType.REMOTE_SERVER_CREATED,
                 server=remote_server,
                 event_time=remote_server.last_updated,
             )
@@ -477,7 +478,7 @@ class TestRemoteServerSupportEndpoint(ZulipTestCase):
         self.assertEqual(plan.next_invoice_date, datetime(2050, 3, 1, tzinfo=timezone.utc))
         self.assertFalse(plan.reminder_to_review_plan_email_sent)
         audit_logs = RemoteRealmAuditLog.objects.filter(
-            event_type=RemoteRealmAuditLog.CUSTOMER_PLAN_PROPERTY_CHANGED
+            event_type=AuditLogEventType.CUSTOMER_PLAN_PROPERTY_CHANGED
         ).order_by("-id")
         assert audit_logs.exists()
         reminder_to_review_plan_email_sent_changed_audit_log = audit_logs[0]
@@ -687,7 +688,7 @@ class TestRemoteServerSupportEndpoint(ZulipTestCase):
         remote_server_no_upgrade.refresh_from_db()
         self.assertTrue(remote_server_no_upgrade.deactivated)
         audit_log = RemoteZulipServerAuditLog.objects.filter(
-            event_type=RemoteZulipServerAuditLog.REMOTE_SERVER_DEACTIVATED
+            event_type=AuditLogEventType.REMOTE_SERVER_DEACTIVATED
         ).last()
         assert audit_log is not None
         self.assertEqual(audit_log.server, remote_server_no_upgrade)
@@ -708,7 +709,7 @@ class TestRemoteServerSupportEndpoint(ZulipTestCase):
         remote_server.refresh_from_db()
         self.assertFalse(remote_server.deactivated)
         audit_log = RemoteZulipServerAuditLog.objects.filter(
-            event_type=RemoteZulipServerAuditLog.REMOTE_SERVER_REACTIVATED
+            event_type=AuditLogEventType.REMOTE_SERVER_REACTIVATED
         ).last()
         assert audit_log is not None
         self.assertEqual(audit_log.server, remote_server)
