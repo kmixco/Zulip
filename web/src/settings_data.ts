@@ -205,6 +205,11 @@ export function user_can_delete_any_message(): boolean {
     if (page_params.is_spectator) {
         return false;
     }
+
+    if (current_user.is_guest) {
+        return false;
+    }
+
     return user_groups.is_user_in_group(
         realm.realm_can_delete_any_message_group,
         current_user.user_id,
