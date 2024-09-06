@@ -64,6 +64,7 @@ def request_callback(request: PreparedRequest) -> tuple[int, dict[str, str], byt
         "https://slack.com/api/users.list",
         "https://slack.com/api/users.info",
         "https://slack.com/api/team.info",
+        "https://slack.com/api/bots.info",
     ]
     for endpoint in endpoints:
         if request.url and endpoint in request.url:
@@ -95,6 +96,29 @@ def request_callback(request: PreparedRequest) -> tuple[int, dict[str, str], byt
         except KeyError:
             return (200, {}, orjson.dumps({"ok": False, "error": "user_not_found"}))
         return (200, {}, orjson.dumps({"ok": True, "user": {"id": user_id, "team_id": team_id}}))
+
+    if request.url and "https://slack.com/api/bots.info" in request.url:
+        bot_info_dict = {
+            "B06NWMNUQ3W": {
+                "id": "B06NWMNUQ3W",
+                "deleted": False,
+                "name": "ClickUp",
+                "updated": 1714669546,
+                "app_id": "A3G4A68V9",
+                "icons": {
+                    "image_36": "https://avatars.slack-edge.com/2024-05-01/7057208497908_a4351f6deb91094eac4c_36.png",
+                    "image_48": "https://avatars.slack-edge.com/2024-05-01/7057208497908_a4351f6deb91094eac4c_48.png",
+                    "image_72": "https://avatars.slack-edge.com/2024-05-01/7057208497908_a4351f6deb91094eac4c_72.png",
+                },
+            }
+        }
+        try:
+            bot_id = qs["bot"][0]
+            bot_info = bot_info_dict[bot_id]
+        except KeyError:
+            return (200, {}, orjson.dumps({"ok": False, "error": "bot_not_found"}))
+        return (200, {}, orjson.dumps({"ok": True, "bot": bot_info}))
+
     # Else, https://slack.com/api/team.info
     team_not_found: tuple[int, dict[str, str], bytes] = (
         200,
@@ -145,6 +169,13 @@ class SlackImporter(ZulipTestCase):
         with self.assertRaises(Exception) as invalid:
             get_slack_api_data(slack_users_info_url, "user", token=token, user="idontexist")
         self.assertEqual(invalid.exception.args, ("Error accessing Slack API: user_not_found",))
+
+        # Bot info
+        slack_bots_info_url = "https://slack.com/api/bots.info"
+        responses.add_callback(responses.GET, slack_bots_info_url, callback=request_callback)
+        with self.assertRaises(Exception) as invalid:
+            get_slack_api_data(slack_bots_info_url, "XXXYYYZZZ", token=token)
+        self.assertEqual(invalid.exception.args, ("Error accessing Slack API: bot_not_found",))
 
         # Team info
         slack_team_info_url = "https://slack.com/api/team.info"
@@ -326,9 +357,10 @@ class SlackImporter(ZulipTestCase):
             ],
         ]
         messages_mock.return_value = [
-            {"user": "U061A1R2R"},
-            {"user": "U061A5N1G"},
-            {"user": "U061A8H1G"},
+            {"user": "U061A1R2R", "team": "T6LARQE2Z"},
+            {"user": "U061A5N1G", "team": "T6LARQE2Z"},
+            {"user": "U061A8H1G", "team": "T6LARQE2Z"},
+            {"subtype": "bot_message", "text": "", "username": "ClickUp", "bot_id": "B06NWMNUQ3W"},
         ]
         # Users info
         slack_users_info_url = "https://slack.com/api/users.info"
@@ -336,11 +368,15 @@ class SlackImporter(ZulipTestCase):
         # Team info
         slack_team_info_url = "https://slack.com/api/team.info"
         responses.add_callback(responses.GET, slack_team_info_url, callback=request_callback)
+        # Bot info
+        slack_bot_info_url = "https://slack.com/api/bots.info"
+        responses.add_callback(responses.GET, slack_bot_info_url, callback=request_callback)
+
         slack_data_dir = self.fixture_file_name("", type="slack_fixtures")
         fetch_shared_channel_users(users, slack_data_dir, "xoxb-valid-token")
 
         # Normal users
-        self.assert_length(users, 8)
+        self.assert_length(users, 9)
         self.assertEqual(users[0]["id"], "U061A1R2R")
         self.assertEqual(users[0]["is_mirror_dummy"], False)
         self.assertFalse("team_domain" in users[0])
@@ -352,6 +388,7 @@ class SlackImporter(ZulipTestCase):
         # not deterministic.
         later_users = sorted(users[3:], key=lambda x: x["id"])
         expected_users = [
+            ("B06NWMNUQ3W", "ClickUp"),
             ("U061A3E0G", "foreignteam1"),
             ("U061A8H1G", "foreignteam2"),
             ("U11111111", "foreignteam2"),
@@ -360,8 +397,12 @@ class SlackImporter(ZulipTestCase):
         ]
         for expected, found in zip(expected_users, later_users, strict=False):
             self.assertEqual(found["id"], expected[0])
-            self.assertEqual(found["team_domain"], expected[1])
-            self.assertEqual(found["is_mirror_dummy"], True)
+            if "bot_id" in found.get("profile", {}):
+                self.assertEqual(found["real_name"], expected[1])
+                self.assertEqual(found["is_mirror_dummy"], False)
+            else:
+                self.assertEqual(found["team_domain"], expected[1])
+                self.assertEqual(found["is_mirror_dummy"], True)
 
     @mock.patch("zerver.data_import.slack.get_data_file")
     def test_users_to_zerver_userprofile(self, mock_get_data_file: mock.Mock) -> None:
@@ -1201,6 +1242,184 @@ class SlackImporter(ZulipTestCase):
         self.assertEqual(
             zerver_message[1]["recipient"], slack_recipient_name_to_zulip_recipient_id["random"]
         )
+
+    @mock.patch("zerver.data_import.slack.build_usermessages", return_value=(2, 4))
+    def test_channel_message_to_zerver_message_with_integration_bots(
+        self, mock_build_usermessage: mock.Mock
+    ) -> None:
+        user_data = [
+            {"id": "U066MTL5U", "name": "john doe", "deleted": False, "real_name": "John"},
+            {"id": "U061A5N1G", "name": "jane doe", "deleted": False, "real_name": "Jane"},
+            {
+                "id": "B06NWMNUQ3W",  # Bot user
+                "name": "ClickUp",
+                "deleted": False,
+                "real_name": "ClickUp",
+            },
+        ]
+
+        slack_user_id_to_zulip_user_id = {"U066MTL5U": 5, "U061A5N1G": 24, "B06NWMNUQ3W": 43}
+
+        all_messages: list[dict[str, Any]] = [
+            {
+                "subtype": "bot_message",
+                "text": "",
+                "username": "ClickUp",
+                "attachments": [
+                    {
+                        "id": 1,
+                        "color": "008844",
+                        "fallback": "dsdaddsa",
+                        "text": "Added assignee Pieter\n\nby Pieter\n_<https://app.clickup.com/25567147/v/s/43687023|The Goodiest of Cstdddddsdd> &gt; <https://app.clickup.com/25567147/v/li/901601846060|dsad>_",
+                        "title": "dsdaddsa",
+                        "title_link": "https://app.clickup.com/t/86cv0v5my",
+                        "mrkdwn_in": ["text"],
+                    }
+                ],
+                "type": "message",
+                "ts": "1712027355.830689",
+                "bot_id": "B06NWMNUQ3W",
+                "app_id": "A3G4A68V9",
+                "channel_name": "general",
+            },
+            {
+                "subtype": "bot_message",
+                "text": "",
+                "username": "ClickUp",
+                "attachments": [
+                    {
+                        "id": 1,
+                        "blocks": [
+                            {
+                                "type": "section",
+                                "block_id": "qvtCh",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": "<https://app.clickup.com/t/86cv0v5my| dsda>",
+                                    "verbatim": False,
+                                },
+                            },
+                            {
+                                "type": "section",
+                                "block_id": "7LtRa",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": "Task Created\nBy Pieter\n",
+                                    "verbatim": False,
+                                },
+                            },
+                            {
+                                "type": "section",
+                                "block_id": "XgOBF",
+                                "fields": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": "_<https://app.clickup.com/25567147/v/s/43687023|The Goodiest of Cstdddddsdd> &gt; <https://app.clickup.com/25567147/v/li/901601846060|dsad>_",
+                                        "verbatim": False,
+                                    }
+                                ],
+                            },
+                        ],
+                        "color": "#656f7d",
+                        "fallback": "[no preview available]",
+                    }
+                ],
+                "type": "message",
+                "ts": "1712026462.647119",
+                "bot_id": "B06NWMNUQ3W",
+                "app_id": "A3G4A68V9",
+                "channel_name": "general",
+            },
+            {
+                "subtype": "bot_message",
+                "text": "",
+                "username": "ClickUp",
+                "attachments": [
+                    {
+                        "id": 1,
+                        "color": "656f7d",
+                        "fallback": "Buy Ingredients!",
+                        "text": "New comment:  where can I buy it?\n\nby Pieter\n_<https://app.clickup.com/25567147/v/s/43687023|The Goodiest of Cstdddddsdd> &gt; <https://app.clickup.com/25567147/v/li/901601846060|dsad>_",
+                        "title": "Buy Ingredients!",
+                        "title_link": "https://app.clickup.com/t/86cuy8e4y?comment=90160026391938",
+                        "mrkdwn_in": ["text"],
+                    }
+                ],
+                "type": "message",
+                "ts": "1711032565.114789",
+                "bot_id": "B06NWMNUQ3W",
+                "app_id": "A3G4A68V9",
+                "channel_name": "general",
+            },
+        ]
+
+        slack_recipient_name_to_zulip_recipient_id = {
+            "random": 2,
+            "general": 1,
+        }
+        dm_members: DMMembersT = {}
+
+        zerver_usermessage: list[dict[str, Any]] = []
+        subscriber_map: dict[int, set[int]] = {}
+        added_channels: dict[str, tuple[str, int]] = {"random": ("c5", 1), "general": ("c6", 2)}
+
+        (
+            zerver_message,
+            zerver_usermessage,
+            attachment,
+            uploads,
+            reaction,
+        ) = channel_message_to_zerver_message(
+            1,
+            user_data,
+            slack_user_id_to_zulip_user_id,
+            slack_recipient_name_to_zulip_recipient_id,
+            all_messages,
+            [],
+            subscriber_map,
+            added_channels,
+            dm_members,
+            "domain",
+            set(),
+            convert_slack_threads=True,
+        )
+        # functioning already tested in helper function
+        self.assertEqual(zerver_usermessage, [])
+        # subtype: channel_join is filtered
+        self.assert_length(zerver_message, 3)
+
+        self.assertEqual(uploads, [])
+        self.assertEqual(attachment, [])
+
+        expected_message_attachment = """## [dsdaddsa](https://app.clickup.com/t/86cv0v5my)
+
+Added assignee Pieter
+
+by Pieter
+*[The Goodiest of Cstdddddsdd](https://app.clickup.com/25567147/v/s/43687023) &gt; [dsad](https://app.clickup.com/25567147/v/li/901601846060)*
+""".strip()
+        self.assertEqual(zerver_message[0]["content"], expected_message_attachment)
+        self.assertEqual(zerver_message[0]["sender"], slack_user_id_to_zulip_user_id["B06NWMNUQ3W"])
+
+        expected_message_block = """[ dsda](https://app.clickup.com/t/86cv0v5my)
+
+Task Created
+By Pieter
+
+*[The Goodiest of Cstdddddsdd](https://app.clickup.com/25567147/v/s/43687023) &gt; [dsad](https://app.clickup.com/25567147/v/li/901601846060)*
+""".strip()
+        self.assertEqual(zerver_message[1]["content"], expected_message_block)
+        self.assertEqual(zerver_message[1]["sender"], slack_user_id_to_zulip_user_id["B06NWMNUQ3W"])
+
+        expected_message_block_2 = """## [Buy Ingredients!](https://app.clickup.com/t/86cuy8e4y?comment=90160026391938)
+
+New comment:  where can I buy it?
+
+by Pieter
+*[The Goodiest of Cstdddddsdd](https://app.clickup.com/25567147/v/s/43687023) &gt; [dsad](https://app.clickup.com/25567147/v/li/901601846060)*
+""".strip()
+        self.assertEqual(zerver_message[2]["content"], expected_message_block_2)
+        self.assertEqual(zerver_message[2]["sender"], slack_user_id_to_zulip_user_id["B06NWMNUQ3W"])
 
     @mock.patch("zerver.data_import.slack.channel_message_to_zerver_message")
     @mock.patch("zerver.data_import.slack.get_messages_iterator")
