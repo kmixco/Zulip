@@ -207,6 +207,7 @@
 
 .custom-user-url-field {
     display: flex;
+    align-items: center;
     /* Maintain space between URL and copy icon. */
     gap: 3px;
     overflow: hidden;
@@ -218,27 +219,7 @@
     }
 
     .copy-custom-field-url {
-        /* Don't flex; preserve 20px space for icon. */
-        flex: 0 0 20px;
-        /* Make button a flex item to center icon. */
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: transparent;
-        border: 0;
-        padding: 0;
-
-        #clipboard_image {
-            margin: 0;
-
-            &:hover path {
-                fill: hsl(204deg 100% 40%);
-            }
-        }
-
-        &:focus {
-            outline: none;
-        }
+        height: 1em;
     }
 }
 
@@ -1071,31 +1052,14 @@ ul.popover-group-menu-member-list {
 #popover-menu-copy-email,
 .copy-custom-profile-field-link {
     display: flex;
-    padding: 3px 2px 1px;
-    border-radius: 4px;
-    color: var(--color-text-item);
-    text-decoration: none !important;
     margin-left: auto;
 
     &.hide_copy_icon {
         display: none;
     }
 
-    &:hover {
-        color: var(--color-copy-btn-hover) !important;
-        background-color: var(--color-copy-btn-bg-hover);
-    }
-
-    &:active {
-        color: var(--color-copy-btn-active) !important;
-        background-color: var(--color-copy-btn-bg-active);
-    }
-
     &:focus-visible {
         outline: 1px solid var(--color-outline-focus) !important;
-        outline-offset: 0;
-        color: var(--color-copy-btn-hover) !important;
-        background-color: var(--color-copy-btn-bg-hover);
     }
 }
 
@@ -1291,7 +1255,7 @@ ul.popover-group-menu-member-list {
         height: 1.0667em;
     }
 
-    .zulip-icon {
+    .popover-menu-icon {
         position: relative;
         top: -1px;
     }
