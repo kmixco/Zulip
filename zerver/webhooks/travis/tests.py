@@ -50,7 +50,7 @@ Details: [changes](https://github.com/hl7-fhir/fhir-svn/compare/6dccb98bcfd9...6
         )
 
     def test_travis_only_push_event_not_sent(self) -> None:
-        self.url = f'{self.build_webhook_url()}&only_events=["push"]&ignore_pull_requests=false'
+        self.url = f'{self.build_webhook_url()}&only_events=["push"]'
 
         self.check_webhook(
             "pull_request",
@@ -68,7 +68,7 @@ Details: [changes](https://github.com/hl7-fhir/fhir-svn/compare/6dccb98bcfd9...6
         )
 
     def test_travis_exclude_push_event_sent(self) -> None:
-        self.url = f'{self.build_webhook_url()}&exclude_events=["push"]&ignore_pull_requests=false'
+        self.url = f'{self.build_webhook_url()}&exclude_events=["push"]'
 
         self.check_webhook(
             "pull_request",
@@ -78,7 +78,7 @@ Details: [changes](https://github.com/hl7-fhir/fhir-svn/compare/6dccb98bcfd9...6
         )
 
     def test_travis_include_glob_events(self) -> None:
-        self.url = f'{self.build_webhook_url()}&include_events=["*"]&ignore_pull_requests=false'
+        self.url = f'{self.build_webhook_url()}&include_events=["*"]'
 
         self.check_webhook(
             "pull_request",
@@ -95,7 +95,7 @@ Details: [changes](https://github.com/hl7-fhir/fhir-svn/compare/6dccb98bcfd9...6
         )
 
     def test_travis_exclude_glob_events(self) -> None:
-        self.url = f'{self.build_webhook_url()}&exclude_events=["*"]&ignore_pull_requests=false'
+        self.url = f'{self.build_webhook_url()}&exclude_events=["*"]'
 
         self.check_webhook(
             "pull_request",
