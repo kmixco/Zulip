@@ -2173,6 +2173,7 @@ class ZulipMarkdown(markdown.Markdown):
     image_preview_enabled: bool
     url_embed_preview_enabled: bool
     url_embed_data: dict[str, UrlEmbedData | None] | None
+    default_code_block_language: str
 
     def __init__(
         self,
@@ -2583,6 +2584,7 @@ def do_convert(
     mention_data: MentionData | None = None,
     email_gateway: bool = False,
     no_previews: bool = False,
+    default_code_block_language: str = "",
 ) -> MessageRenderingResult:
     """Convert Markdown to HTML, with Zulip-specific settings and hacks."""
     # This logic is a bit convoluted, but the overall goal is to support a range of use cases:
@@ -2631,6 +2633,9 @@ def do_convert(
         thumbnail_spinners=set(),
     )
 
+    if message_realm is not None and not default_code_block_language:
+        default_code_block_language = message_realm.default_code_block_language
+
     _md_engine.zulip_message = message
     _md_engine.zulip_rendering_result = rendering_result
     _md_engine.zulip_realm = message_realm
@@ -2640,6 +2645,7 @@ def do_convert(
         message, message_realm, no_previews
     )
     _md_engine.url_embed_data = url_embed_data
+    _md_engine.default_code_block_language = default_code_block_language
 
     # Pre-fetch data from the DB that is used in the Markdown thread
     user_upload_previews = None
@@ -2756,6 +2762,7 @@ def markdown_convert(
     mention_data: MentionData | None = None,
     email_gateway: bool = False,
     no_previews: bool = False,
+    default_code_block_language: str = "",
 ) -> MessageRenderingResult:
     markdown_stats_start()
     ret = do_convert(
@@ -2769,6 +2776,7 @@ def markdown_convert(
         mention_data,
         email_gateway,
         no_previews=no_previews,
+        default_code_block_language=default_code_block_language,
     )
     markdown_stats_finish()
     return ret
@@ -2782,6 +2790,7 @@ def render_message_markdown(
     url_embed_data: dict[str, UrlEmbedData | None] | None = None,
     mention_data: MentionData | None = None,
     email_gateway: bool = False,
+    default_code_block_language: str = "",
 ) -> MessageRenderingResult:
     """
     This is basically just a wrapper for do_render_markdown.
@@ -2804,6 +2813,7 @@ def render_message_markdown(
         url_embed_data=url_embed_data,
         mention_data=mention_data,
         email_gateway=email_gateway,
+        default_code_block_language=default_code_block_language,
     )
 
     return rendering_result
