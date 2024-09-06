@@ -10,6 +10,7 @@ import boto3
 import botocore
 from botocore.client import Config
 from django.conf import settings
+from django.utils.http import content_disposition_header
 from mypy_boto3_s3.service_resource import Bucket
 from typing_extensions import override
 
@@ -60,9 +61,9 @@ def get_bucket(bucket_name: str, authed: bool = True) -> Bucket:
     ).Bucket(bucket_name)
 
 
-def upload_image_to_s3(
+def upload_content_to_s3(
     bucket: Bucket,
-    file_name: str,
+    path: str,
     content_type: str | None,
     user_profile: UserProfile | None,
     contents: bytes,
@@ -77,8 +78,9 @@ def upload_image_to_s3(
     ] = "STANDARD",
     cache_control: str | None = None,
     extra_metadata: dict[str, str] | None = None,
+    filename: str | None = None,
 ) -> None:
-    key = bucket.Object(file_name)
+    key = bucket.Object(path)
     metadata: dict[str, str] = {}
     if user_profile:
         metadata["user_profile_id"] = str(user_profile.id)
@@ -89,7 +91,10 @@ def upload_image_to_s3(
     extras = {}
     if content_type is None:  # nocoverage
         content_type = ""
-    if content_type not in INLINE_MIME_TYPES:
+    is_attachment = content_type not in INLINE_MIME_TYPES
+    if filename is not None:
+        extras["ContentDisposition"] = content_disposition_header(is_attachment, filename)
+    elif is_attachment:
         extras["ContentDisposition"] = "attachment"
     if cache_control is not None:
         extras["CacheControl"] = cache_control
@@ -211,17 +216,19 @@ class S3UploadBackend(ZulipUploadBackend):
     def upload_message_attachment(
         self,
         path_id: str,
+        filename: str,
         content_type: str,
         file_data: bytes,
         user_profile: UserProfile | None,
     ) -> None:
-        upload_image_to_s3(
+        upload_content_to_s3(
             self.uploads_bucket,
             path_id,
             content_type,
             user_profile,
             file_data,
             storage_class=settings.S3_UPLOADS_STORAGE_CLASS,
+            filename=filename,
         )
 
     @override
@@ -279,7 +286,7 @@ class S3UploadBackend(ZulipUploadBackend):
         future: bool = True,
     ) -> None:
         extra_metadata = {"avatar_version": str(user_profile.avatar_version + (1 if future else 0))}
-        upload_image_to_s3(
+        upload_content_to_s3(
             self.avatar_bucket,
             file_path,
             content_type,
@@ -307,7 +314,7 @@ class S3UploadBackend(ZulipUploadBackend):
         s3_file_name = os.path.join(self.realm_avatar_and_logo_path(user_profile.realm), "icon")
 
         image_data = icon_file.read()
-        upload_image_to_s3(
+        upload_content_to_s3(
             self.avatar_bucket,
             s3_file_name + ".original",
             content_type,
@@ -316,7 +323,7 @@ class S3UploadBackend(ZulipUploadBackend):
         )
 
         resized_data = resize_avatar(image_data)
-        upload_image_to_s3(
+        upload_content_to_s3(
             self.avatar_bucket,
             s3_file_name + ".png",
             "image/png",
@@ -346,7 +353,7 @@ class S3UploadBackend(ZulipUploadBackend):
         s3_file_name = os.path.join(self.realm_avatar_and_logo_path(user_profile.realm), basename)
 
         image_data = logo_file.read()
-        upload_image_to_s3(
+        upload_content_to_s3(
             self.avatar_bucket,
             s3_file_name + ".original",
             content_type,
@@ -355,7 +362,7 @@ class S3UploadBackend(ZulipUploadBackend):
         )
 
         resized_data = resize_logo(image_data)
-        upload_image_to_s3(
+        upload_content_to_s3(
             self.avatar_bucket,
             s3_file_name + ".png",
             "image/png",
@@ -383,7 +390,7 @@ class S3UploadBackend(ZulipUploadBackend):
     def upload_single_emoji_image(
         self, path: str, content_type: str | None, user_profile: UserProfile, image_data: bytes
     ) -> None:
-        upload_image_to_s3(
+        upload_content_to_s3(
             self.avatar_bucket,
             path,
             content_type,
