@@ -4968,6 +4968,68 @@ paths:
                             - type: object
                               additionalProperties: false
                               description: |
+                                Event containing details of a newly created saved reply.
+
+                                **Changes**: New in Zulip 10.0 (feature level 285).
+                              properties:
+                                id:
+                                  $ref: "#/components/schemas/EventIdSchema"
+                                type:
+                                  allOf:
+                                    - $ref: "#/components/schemas/EventTypeSchema"
+                                    - enum:
+                                        - saved_replies
+                                op:
+                                  type: string
+                                  enum:
+                                    - add
+                                saved_reply:
+                                  $ref: "#/components/schemas/SavedReply"
+                              example:
+                                {
+                                  "type": "saved_replies",
+                                  "op": "add",
+                                  "saved_reply":
+                                    {
+                                      "id": 1,
+                                      "title": "Example",
+                                      "content": "Welcome to the organization.",
+                                      "date_created": 1681662420,
+                                    },
+                                }
+                            - type: object
+                              additionalProperties: false
+                              description: |
+                                Event containing the ID of a deleted saved reply.
+
+                                **Changes**: New in Zulip 10.0 (feature level 285).
+                              properties:
+                                id:
+                                  $ref: "#/components/schemas/EventIdSchema"
+                                type:
+                                  allOf:
+                                    - $ref: "#/components/schemas/EventTypeSchema"
+                                    - enum:
+                                        - saved_replies
+                                op:
+                                  type: string
+                                  enum:
+                                    - remove
+                                saved_reply_id:
+                                  type: integer
+                                  description: |
+                                    The ID of the saved reply that was just deleted.
+
+                                    **Changes**: New in Zulip 10.0 (feature level 285).
+                              example:
+                                {
+                                  "type": "saved_replies",
+                                  "op": "remove",
+                                  "saved_reply_id": 17,
+                                }
+                            - type: object
+                              additionalProperties: false
+                              description: |
                                 Event sent to a user's clients when scheduled messages
                                 are created.
 
@@ -5708,6 +5770,152 @@ paths:
                         "code": "BAD_REQUEST",
                         "result": "error",
                         "msg": "Draft does not exist",
+                      }
+  /saved_replies:
+    get:
+      operationId: get-saved-replies
+      tags: ["saved_replies"]
+      summary: Get all saved replies
+      description: |
+        Fetch all the saved replies for the current user.
+
+        **Changes**: New in Zulip 10.0 (feature level 285).
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/JsonSuccessBase"
+                  - additionalProperties: false
+                    properties:
+                      result: {}
+                      msg: {}
+                      ignored_parameters_unsupported: {}
+                      saved_replies:
+                        type: array
+                        description: |
+                          An array of dictionaries containing data on all of the current user's
+                          saved replies.
+                        items:
+                          $ref: "#/components/schemas/SavedReply"
+                    example:
+                      {
+                        "result": "success",
+                        "msg": "",
+                        "saved_replies":
+                          [
+                            {
+                              "id": 1,
+                              "title": "Example",
+                              "content": "Welcome to the organization.",
+                              "date_created": 1681662420,
+                            },
+                          ],
+                      }
+    post:
+      operationId: create-saved-reply
+      tags: ["saved_replies"]
+      summary: Create a saved reply
+      description: |
+        Create a new saved reply for the current user.
+
+        **Changes**: New in Zulip 10.0 (feature level 285).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  description: |
+                    The title of the saved reply.
+                  example: Example title
+                content:
+                  type: string
+                  description: |
+                    The content of the saved reply in text/markdown format.
+
+                    Clients should insert this content into a message when using
+                    a saved reply.
+                  example: Welcome to the organization.
+              required:
+                - title
+                - content
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/JsonSuccessBase"
+                  - additionalProperties: false
+                    properties:
+                      result: {}
+                      msg: {}
+                      ignored_parameters_unsupported: {}
+                      saved_reply_id:
+                        type: integer
+                        description: |
+                          The unique ID of the saved reply created.
+                    example:
+                      {"result": "success", "msg": "", "saved_reply_id": 1}
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CodedError"
+                  - example:
+                      {
+                        "code": "BAD_REQUEST",
+                        "msg": "Title cannot be empty.",
+                        "result": "error",
+                      }
+                    description: |
+                      A typical failed JSON response for when either title or content is
+                      empty:
+  /saved_replies/{saved_reply_id}:
+    delete:
+      operationId: delete-saved-reply
+      tags: ["saved_replies"]
+      summary: Delete a saved reply
+      description: |
+        Delete a saved reply.
+
+        **Changes**: New in Zulip 10.0 (feature level 285).
+      parameters:
+        - name: saved_reply_id
+          in: path
+          schema:
+            type: integer
+          description: |
+            The ID of the saved reply to delete.
+          required: true
+          example: 2
+      responses:
+        "200":
+          $ref: "#/components/responses/SimpleSuccess"
+        "404":
+          description: Not Found.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CodedError"
+                  - description: |
+                      A typical failed JSON response for when no saved reply exists
+                      with the provided ID:
+                    example:
+                      {
+                        "code": "BAD_REQUEST",
+                        "result": "error",
+                        "msg": "Saved reply does not exist.",
                       }
   /scheduled_messages:
     get:
@@ -14008,6 +14216,17 @@ paths:
                                 The list of users other than the current user in the direct message
                                 conversation. This will be an empty list for direct messages sent to
                                 oneself.
+                      saved_replies:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SavedReply"
+                        description: |
+                          Present if `saved_replies` is present in `fetch_event_types`.
+
+                          An array of dictionaries containing data on all of the current user's
+                          saved replies.
+
+                          **Changes**: New in Zulip 10.0 (feature level 285).
                       subscriptions:
                         type: array
                         items:
@@ -22213,6 +22432,32 @@ components:
         - to
         - topic
         - content
+    SavedReply:
+      type: object
+      description: |
+        Object containing the details of the saved reply.
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          description: |
+            The unique ID of the saved reply.
+        title:
+          type: string
+          description: |
+            The title of the saved reply.
+        content:
+          type: string
+          description: |
+            The content of the saved reply in text/markdown format.
+
+            Clients should insert this content into a message when using
+            a saved reply.
+        date_created:
+          type: integer
+          description: |
+            The UNIX timestamp for when the saved reply was created, in
+            UTC seconds.
     ScheduledMessage:
       type: object
       description: |

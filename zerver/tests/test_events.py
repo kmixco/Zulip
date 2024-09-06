@@ -172,6 +172,8 @@ from zerver.lib.event_schema import (
     check_realm_user_add,
     check_realm_user_remove,
     check_realm_user_update,
+    check_saved_reply_add,
+    check_saved_reply_remove,
     check_scheduled_message_add,
     check_scheduled_message_remove,
     check_scheduled_message_update,
@@ -206,6 +208,7 @@ from zerver.lib.events import apply_events, fetch_initial_state_data, post_proce
 from zerver.lib.markdown import render_message_markdown
 from zerver.lib.mention import MentionBackend, MentionData
 from zerver.lib.muted_users import get_mute_object
+from zerver.lib.saved_replies import do_create_saved_reply, do_delete_saved_reply
 from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.test_helpers import (
     create_dummy_file,
@@ -238,6 +241,7 @@ from zerver.models import (
     RealmFilter,
     RealmPlayground,
     RealmUserDefault,
+    SavedReply,
     Service,
     Stream,
     UserMessage,
@@ -1653,6 +1657,18 @@ class NormalActionsTest(BaseAction):
         with self.verify_action() as events:
             do_remove_alert_words(self.user_profile, ["alert_word"])
         check_alert_words("events[0]", events[0])
+
+    def test_saved_replies_events(self) -> None:
+        with self.verify_action() as events:
+            do_create_saved_reply("Welcome message", "Welcome", self.user_profile)
+        check_saved_reply_add("events[0]", events[0])
+
+        saved_reply_id = (
+            SavedReply.objects.filter(user_profile=self.user_profile).order_by("id")[0].id
+        )
+        with self.verify_action() as events:
+            do_delete_saved_reply(saved_reply_id, self.user_profile)
+        check_saved_reply_remove("events[0]", events[0])
 
     def test_away_events(self) -> None:
         client = get_client("website")

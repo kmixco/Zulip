@@ -143,6 +143,7 @@ from zerver.views.registration import (
     signup_send_confirm,
 )
 from zerver.views.report import report_csp_violations
+from zerver.views.saved_replies import create_saved_reply, delete_saved_reply, get_saved_replies
 from zerver.views.scheduled_messages import (
     create_scheduled_message_backend,
     delete_scheduled_messages,
@@ -329,6 +330,9 @@ v1_api_and_json_patterns = [
     # Endpoints for syncing drafts.
     rest_path("drafts", GET=fetch_drafts, POST=create_drafts),
     rest_path("drafts/<int:draft_id>", PATCH=edit_draft, DELETE=delete_draft),
+    # saved_replies -> zerver.views.saved_replies
+    rest_path("saved_replies", GET=get_saved_replies, POST=create_saved_reply),
+    rest_path("saved_replies/<int:saved_reply_id>", DELETE=delete_saved_reply),
     # New scheduled messages are created via send_message_backend.
     rest_path(
         "scheduled_messages", GET=fetch_scheduled_messages, POST=create_scheduled_message_backend

@@ -89,6 +89,9 @@
 * [Get all alert words](/api/get-alert-words)
 * [Add alert words](/api/add-alert-words)
 * [Remove alert words](/api/remove-alert-words)
+* [Get all saved replies](/api/get-saved-replies)
+* [Create a saved reply](/api/create-saved-reply)
+* [Delete a saved reply](/api/delete-saved-reply)
 
 #### Invitations
 

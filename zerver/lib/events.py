@@ -45,6 +45,7 @@ from zerver.lib.onboarding_steps import get_next_onboarding_steps
 from zerver.lib.presence import get_presence_for_user, get_presences_for_realm
 from zerver.lib.realm_icon import realm_icon_url
 from zerver.lib.realm_logo import get_realm_logo_source, get_realm_logo_url
+from zerver.lib.saved_replies import do_get_saved_replies
 from zerver.lib.scheduled_messages import get_undelivered_scheduled_messages
 from zerver.lib.soft_deactivation import reactivate_user_if_soft_deactivated
 from zerver.lib.sounds import get_available_notification_sounds
@@ -203,6 +204,12 @@ def fetch_initial_state_data(
         # values that are higher than this.  We likely can eventually
         # remove this parameter from the API.
         state["max_message_id"] = max_message_id_for_user(user_profile)
+
+    if want("saved_replies"):
+        if user_profile is None:
+            state["saved_replies"] = []
+        else:
+            state["saved_replies"] = do_get_saved_replies(user_profile)
 
     if want("drafts"):
         if user_profile is None:
@@ -868,6 +875,15 @@ def apply_event(
         # It may be impossible for a heartbeat event to actually reach
         # this code path. But in any case, they're noops.
         pass
+
+    elif event["type"] == "saved_replies":
+        if event["op"] == "add":
+            state["saved_replies"].append(event["saved_reply"])
+        elif event["op"] == "remove":
+            for idx, saved_reply in enumerate(state["saved_replies"]):
+                if saved_reply["id"] == event["saved_reply_id"]:
+                    del state["saved_replies"][idx]
+                    break
 
     elif event["type"] == "drafts":
         if event["op"] == "add":
