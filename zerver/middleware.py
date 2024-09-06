@@ -737,3 +737,31 @@ class ZulipSCIMAuthCheckMiddleware(SCIMAuthCheckMiddleware):
             return response
 
         return None
+
+
+class BadAPIRequestError(JsonableError):
+    http_status_code: int = 403
+    code: ErrorCode = ErrorCode.BAD_API_REQUEST
+
+    def __init__(self) -> None:
+        pass
+
+    @staticmethod
+    @override
+    def msg_format() -> str:
+        return _("The Zulip API is only accessible over HTTPs.")
+
+
+class BadAPIRequest(MiddlewareMixin):
+    def process_request(self, request: HttpRequest) -> None:
+        # Most HTTP requests are redirected to HTTPS by NGINX, but this is not optimal for
+        # API requests, as it can cause security issues. This middleware is used to handle
+        # unencrypted API requests that are not made over HTTPS. Returning a easy-to-understand
+        # error message that can help clients understand the situation and fix the security
+        # issue.
+        if (
+            request.path.startswith("/api/v1/")
+            and not request.is_secure()
+            and request.META["REMOTE_ADDR"] not in ("127.0.0.1", "::1")
+        ):
+            raise BadAPIRequestError
