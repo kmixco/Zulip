@@ -193,6 +193,10 @@ export function dispatch_normal_event(event) {
                     blueslip.error("Unexpected event type reaction/" + event.op);
                     break;
             }
+            message_events.update_views_filtered_on_message_property(
+                [event.message_id],
+                "has-reaction",
+            );
             break;
 
         case "realm": {
@@ -887,6 +891,10 @@ export function dispatch_normal_event(event) {
                         starred_messages.remove(event.messages);
                         starred_messages_ui.rerender_ui();
                     }
+                    message_events.update_views_filtered_on_message_property(
+                        event.messages,
+                        "is-starred",
+                    );
                     break;
                 case "read":
                     if (event.op === "add") {
@@ -897,6 +905,10 @@ export function dispatch_normal_event(event) {
                             message_details: event.message_details,
                         });
                     }
+                    message_events.update_views_filtered_on_message_property(
+                        event.messages,
+                        "is-unread",
+                    );
                     break;
             }
             break;

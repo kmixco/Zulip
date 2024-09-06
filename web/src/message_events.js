@@ -1,8 +1,10 @@
 import $ from "jquery";
+import _ from "lodash";
 import assert from "minimalistic-assert";
 
 import * as alert_words from "./alert_words";
 import {all_messages_data} from "./all_messages_data";
+import * as channel from "./channel";
 import * as compose_fade from "./compose_fade";
 import * as compose_notifications from "./compose_notifications";
 import * as compose_recipient from "./compose_recipient";
@@ -34,6 +36,129 @@ import * as unread from "./unread";
 import * as unread_ops from "./unread_ops";
 import * as unread_ui from "./unread_ui";
 import * as util from "./util";
+
+export function update_views_filtered_on_message_property(message_ids, term_type) {
+    // NOTE: Call this function after updating the message property locally.
+    assert(!term_type.includes("not-"));
+
+    // List of narrow terms whose msg list doesn't get updated elsewhere but
+    // can be applied locally.
+    const supported_term_types = [
+        "has-image",
+        "has-link",
+        "has-reaction",
+        "has-attachment",
+        "is-starred",
+        "is-unread",
+        "is-mentioned",
+        "is-alerted",
+        // TODO: Implement support for these terms.
+        // "is-followed",
+    ];
+
+    if (message_ids.length === 0 || !supported_term_types.includes(term_type)) {
+        return;
+    }
+
+    for (const msg_list of message_lists.all_rendered_message_lists()) {
+        const filter = msg_list.data.filter;
+        const filter_term_types = filter.sorted_term_types();
+        if (
+            // Check if current filter relies on the changed message property.
+            !filter_term_types.includes(term_type) &&
+            !filter_term_types.includes(`not-${term_type}`)
+        ) {
+            continue;
+        }
+
+        if (!filter.can_apply_locally()) {
+            // We can't apply the update locally, so we need to rerender the view.
+            const current_selected_id = msg_list.selected_id();
+            message_view.show(filter.terms(), {
+                then_select_id: current_selected_id,
+                trigger: "message property update",
+                force_rerender: true,
+            });
+            continue;
+        }
+
+        // We need the message objects to determine if they match the filter.
+        const messages_to_fetch = [];
+        const messages = [];
+        for (const message_id of message_ids) {
+            const message = message_store.get(message_id);
+            if (message !== undefined) {
+                messages.push(message);
+            } else {
+                const first_id = msg_list.first().id;
+                const last_id = msg_list.last().id;
+                const has_found_newest = msg_list.data.fetch_status.has_found_newest();
+                const has_found_oldest = msg_list.data.fetch_status.has_found_oldest();
+
+                if (message_id > first_id && message_id < last_id) {
+                    // Need to insert message middle of the list.
+                    messages_to_fetch.push(message_id);
+                } else if (message_id < first_id && has_found_oldest) {
+                    // Need to insert message at the start of list.
+                    messages_to_fetch.push(message_id);
+                } else if (message_id > last_id && has_found_newest) {
+                    // Need to insert message at the end of list.
+                    messages_to_fetch.push(message_id);
+                }
+            }
+        }
+
+        // In most cases, we will only have one message to fetch which
+        // can happen without rerendering the view.
+        // In case of multiple messages, we just rerender the view
+        // since it is likely to use similar amount of resources to
+        // fetching the messages and rerendering the view.
+        if (messages_to_fetch > 1) {
+            const current_selected_id = msg_list.selected_id();
+            message_view.show(filter.terms(), {
+                then_select_id: current_selected_id,
+                trigger: "message property update",
+                force_rerender: true,
+            });
+        } else if (messages_to_fetch.length === 1) {
+            // Fetch the message and update the view.
+            channel.get({
+                url: "/json/messages/" + messages_to_fetch[0],
+                success(data) {
+                    message_helper.process_new_message(data.message);
+                    update_views_filtered_on_message_property(message_ids, term_type);
+                },
+            });
+        } else {
+            // We have all the messages locally, so we can update the view.
+            //
+            // Special case: For starred messages view, we don't remove
+            // messages that are no longer starred to avoid
+            // implementing an undo mechanism for that view.
+            if (
+                term_type === "is-starred" &&
+                _.isEqual(filter.sorted_term_types(), ["is-starred"])
+            ) {
+                msg_list.add_messages(messages);
+                continue;
+            }
+
+            // In most cases, we are only working to update a single message.
+            if (messages.length === 1) {
+                const message = messages[0];
+                if (filter.predicate()(message)) {
+                    msg_list.add_messages(messages);
+                } else {
+                    msg_list.remove_and_rerender(message_ids);
+                }
+            } else {
+                msg_list.data.remove(message_ids);
+                msg_list.data.add_messages(messages);
+                msg_list.rerender();
+            }
+        }
+    }
+}
 
 export function insert_new_messages(messages, sent_by_this_client, deliver_locally) {
     messages = messages.map((message) => message_helper.process_new_message(message));
@@ -111,6 +236,7 @@ export function insert_new_messages(messages, sent_by_this_client, deliver_local
 
 export function update_messages(events) {
     const messages_to_rerender = [];
+    const content_edited_message_ids = [];
     let any_topic_edited = false;
     let changed_narrow = false;
     let refreshed_current_narrow = false;
@@ -502,6 +628,10 @@ export function update_messages(events) {
         ) {
             message_edit_history.fetch_and_render_message_history(anchor_message);
         }
+
+        if (event.orig_content !== undefined) {
+            content_edited_message_ids.push(event.message_id);
+        }
     }
 
     // If a topic was edited, we re-render the whole view to get any
@@ -538,6 +668,14 @@ export function update_messages(events) {
         for (const list of message_lists.all_rendered_message_lists()) {
             list.view.rerender_messages(messages_to_rerender, any_message_content_edited);
         }
+    }
+
+    if (content_edited_message_ids.length > 0) {
+        update_views_filtered_on_message_property(content_edited_message_ids, "has-image");
+        update_views_filtered_on_message_property(content_edited_message_ids, "has-link");
+        update_views_filtered_on_message_property(content_edited_message_ids, "has-attachment");
+        update_views_filtered_on_message_property(content_edited_message_ids, "is-mentioned");
+        update_views_filtered_on_message_property(content_edited_message_ids, "is-alerted");
     }
 
     if (changed_compose) {
