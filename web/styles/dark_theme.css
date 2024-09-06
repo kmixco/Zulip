@@ -89,7 +89,9 @@
         box-shadow: inset 0 1px 0 hsl(0deg 0% 0% / 20%);
     }
 
-    .enter_sends_choices {
+    .enter_sends_choices,
+    #message-formatting,
+    #keyboard-shortcuts {
         color: hsl(236deg 33% 90%);
 
         & kbd {
