@@ -3228,6 +3228,12 @@ paths:
                                             [setting-values]: /api/group-setting-values
                                             [system-groups]: /api/group-setting-values#system-groups
                                             [mentions]: /help/mention-a-user-or-group
+                                    deactivated:
+                                      type: boolean
+                                      description: |
+                                        Whether the user group is deactivated or not.
+
+                                        **Changes**: New in Zulip 10.0 (feature level 285).
                               example:
                                 {
                                   "type": "user_group",
@@ -19863,6 +19869,24 @@ paths:
             **Note**: This endpoint is only available to [members and
             administrators](/help/roles-and-permissions); bots and guests
             cannot use this endpoint.
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                allow_deactivated:
+                  description: |
+                    Whether to include deactivated user groups in the response.
+
+                    **Changes**: New in Zulip 10.0 (feature level 285).
+                  type: boolean
+                  example: true
+                  default: false
+            encoding:
+              allow_deactivated:
+                contentType: application/json
       responses:
         "200":
           description: Success.
@@ -19952,6 +19976,12 @@ paths:
                                     [setting-values]: /api/group-setting-values
                                     [system-groups]: /api/group-setting-values#system-groups
                                     [mentions]: /help/mention-a-user-or-group
+                            deactivated:
+                              type: boolean
+                              description: |
+                                Whether the user group is deactivated or not.
+
+                                **Changes**: New in Zulip 10.0 (feature level 285).
                         description: |
                           A list of `user_group` objects.
                     example:
@@ -20115,6 +20145,20 @@ paths:
                         "result": "success",
                         "is_user_group_member": false,
                       }
+  /user_groups/{user_group_id}/deactivate:
+    post:
+      operationId: deactivate-user-group
+      summary: Deactivate a user group
+      tags: ["users"]
+      description: |
+        Deactivate a user group.
+
+        **Changes**: New in Zulip 10.0 (feature level 285).
+      parameters:
+        - $ref: "#/components/parameters/UserGroupId"
+      responses:
+        "200":
+          $ref: "#/components/responses/SimpleSuccess"
   /real-time:
     # This entry is a hack; it exists to give us a place to put the text
     # documenting the parameters for call_on_each_event and friends.
@@ -21172,6 +21216,12 @@ components:
                 [setting-values]: /api/group-setting-values
                 [system-groups]: /api/group-setting-values#system-groups
                 [mentions]: /help/mention-a-user-or-group
+        deactivated:
+          type: boolean
+          description: |
+            Whether the user group is deactivated or not.
+
+            **Changes**: New in Zulip 10.0 (feature level 285).
     GroupSettingValue:
       oneOf:
         - type: integer

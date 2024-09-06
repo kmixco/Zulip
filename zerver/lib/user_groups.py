@@ -6,7 +6,7 @@ from typing import TypedDict
 
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import F, QuerySet
+from django.db.models import F, Q, QuerySet
 from django.utils.timezone import now as timezone_now
 from django.utils.translation import gettext as _
 from django_cte import With
@@ -52,6 +52,7 @@ class UserGroupDict(TypedDict):
     is_system_group: bool
     can_manage_group: int | AnonymousSettingGroupDict
     can_mention_group: int | AnonymousSettingGroupDict
+    deactivated: bool
 
 
 @dataclass
@@ -70,10 +71,18 @@ class LockedUserGroupContext:
 
 
 def has_user_group_access(
-    user_group: NamedUserGroup, user_profile: UserProfile, *, for_read: bool, as_subgroup: bool
+    user_group: NamedUserGroup,
+    user_profile: UserProfile,
+    *,
+    for_read: bool,
+    as_subgroup: bool,
+    allow_deactivated: bool = False,
 ) -> bool:
     if user_group.realm_id != user_profile.realm_id:
         return False
+
+    if not allow_deactivated and user_group.deactivated:
+        raise JsonableError(_("User group is deactivated."))
 
     if as_subgroup:
         # At this time, we only check for realm ID of a potential subgroup.
@@ -107,10 +116,15 @@ def has_user_group_access(
 
 
 def access_user_group_by_id(
-    user_group_id: int, user_profile: UserProfile, *, for_read: bool
+    user_group_id: int,
+    user_profile: UserProfile,
+    *,
+    for_read: bool,
+    for_setting: bool = False,
+    allow_deactivated: bool = False,
 ) -> NamedUserGroup:
     try:
-        if for_read:
+        if for_read and not for_setting:
             user_group = NamedUserGroup.objects.get(id=user_group_id, realm=user_profile.realm)
         else:
             user_group = NamedUserGroup.objects.select_for_update().get(
@@ -119,8 +133,83 @@ def access_user_group_by_id(
     except NamedUserGroup.DoesNotExist:
         raise JsonableError(_("Invalid user group"))
 
-    if not has_user_group_access(user_group, user_profile, for_read=for_read, as_subgroup=False):
+    if not has_user_group_access(
+        user_group,
+        user_profile,
+        for_read=for_read,
+        as_subgroup=False,
+        allow_deactivated=allow_deactivated,
+    ):
         raise JsonableError(_("Insufficient permission"))
+
+    return user_group
+
+
+def access_user_group_for_deactivation(
+    user_group_id: int, user_profile: UserProfile
+) -> NamedUserGroup:
+    user_group = access_user_group_by_id(user_group_id, user_profile, for_read=False)
+
+    if (
+        user_group.direct_supergroups.exclude(named_user_group=None)
+        .filter(named_user_group__deactivated=False)
+        .exists()
+    ):
+        raise JsonableError(
+            _("You cannot deactivate a user group that is subgroup of any user group.")
+        )
+
+    anonymous_supergroup_ids = user_group.direct_supergroups.filter(
+        named_user_group=None
+    ).values_list("id", flat=True)
+
+    setting_group_ids_using_deactivating_user_group = [
+        *list(anonymous_supergroup_ids),
+        user_group.id,
+    ]
+
+    if Stream.objects.filter(
+        realm_id=user_group.realm_id,
+        deactivated=False,
+        can_remove_subscribers_group_id__in=setting_group_ids_using_deactivating_user_group,
+    ).exists():
+        raise JsonableError(_("You cannot deactivate a user group which is used for setting."))
+
+    if (
+        NamedUserGroup.objects.filter(realm_id=user_group.realm_id, deactivated=False)
+        .filter(
+            Q(can_manage_group_id__in=setting_group_ids_using_deactivating_user_group)
+            | Q(can_mention_group_id__in=setting_group_ids_using_deactivating_user_group)
+        )
+        .exists()
+    ):
+        raise JsonableError(_("You cannot deactivate a user group which is used for setting."))
+
+    if (
+        Realm.objects.filter(id=user_group.realm_id)
+        .filter(
+            Q(create_multiuse_invite_group_id__in=setting_group_ids_using_deactivating_user_group)
+            | Q(can_access_all_users_group_id__in=setting_group_ids_using_deactivating_user_group)
+            | Q(
+                can_create_public_channel_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+            | Q(
+                can_create_private_channel_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+            | Q(
+                can_create_web_public_channel_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+            | Q(can_delete_any_message_group_id__in=setting_group_ids_using_deactivating_user_group)
+            | Q(
+                direct_message_initiator_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+            | Q(
+                direct_message_permission_group_id__in=setting_group_ids_using_deactivating_user_group
+            )
+        )
+        .exists()
+    ):
+        raise JsonableError(_("You cannot deactivate a user group which is used for setting."))
 
     return user_group
 
@@ -180,9 +269,10 @@ def lock_subgroups_with_respect_to_supergroup(
             )
 
         for subgroup in potential_subgroups:
-            # At this time, we only do a check on the realm ID of the fetched
-            # subgroup. This would be caught by the check earlier, so there is
-            # no coverage here.
+            # At this time, we only do a check on the realm ID of the subgroup and
+            # whether the group is deactivated or not. Realm ID error would be caught
+            # above and in case the user group is deactivated the error will be raised
+            # in has_user_group_access itself, so there is no coverage here.
             if not has_user_group_access(subgroup, acting_user, for_read=False, as_subgroup=True):
                 raise JsonableError(_("Insufficient permission"))  # nocoverage
 
@@ -258,11 +348,12 @@ def check_setting_configuration_for_system_groups(
 
 
 def update_or_create_user_group_for_setting(
-    realm: Realm,
+    user_profile: UserProfile,
     direct_members: list[int],
     direct_subgroups: list[int],
     current_setting_value: UserGroup | None,
 ) -> UserGroup:
+    realm = user_profile.realm
     if current_setting_value is not None and not hasattr(current_setting_value, "named_user_group"):
         # We do not create a new group if the setting was already set
         # to an anonymous group. The memberships of existing group
@@ -276,7 +367,9 @@ def update_or_create_user_group_for_setting(
     member_users = user_ids_to_users(direct_members, realm)
     user_group.direct_members.set(member_users)
 
-    potential_subgroups = NamedUserGroup.objects.filter(realm=realm, id__in=direct_subgroups)
+    potential_subgroups = NamedUserGroup.objects.select_for_update().filter(
+        realm=realm, id__in=direct_subgroups
+    )
     group_ids_found = [group.id for group in potential_subgroups]
     group_ids_not_found = [
         group_id for group_id in direct_subgroups if group_id not in group_ids_found
@@ -285,6 +378,14 @@ def update_or_create_user_group_for_setting(
         raise JsonableError(
             _("Invalid user group ID: {group_id}").format(group_id=group_ids_not_found[0])
         )
+
+    for subgroup in potential_subgroups:
+        # At this time, we only do a check on the realm ID of the subgroup and
+        # whether the group is deactivated or not. Realm ID error would be caught
+        # above and in case the user group is deactivated the error will be raised
+        # in has_user_group_access itself, so there is no coverage here.
+        if not has_user_group_access(subgroup, user_profile, for_read=False, as_subgroup=True):
+            raise JsonableError(_("Insufficient permission"))  # nocoverage
 
     user_group.direct_subgroups.set(group_ids_found)
 
@@ -300,7 +401,9 @@ def access_user_group_for_setting(
     current_setting_value: UserGroup | None = None,
 ) -> UserGroup:
     if isinstance(setting_user_group, int):
-        named_user_group = access_user_group_by_id(setting_user_group, user_profile, for_read=True)
+        named_user_group = access_user_group_by_id(
+            setting_user_group, user_profile, for_read=True, for_setting=True
+        )
         check_setting_configuration_for_system_groups(
             named_user_group, setting_name, permission_configuration
         )
@@ -310,7 +413,7 @@ def access_user_group_for_setting(
         raise SystemGroupRequiredError(setting_name)
 
     user_group = update_or_create_user_group_for_setting(
-        user_profile.realm,
+        user_profile,
         setting_user_group.direct_members,
         setting_user_group.direct_subgroups,
         current_setting_value,
@@ -373,7 +476,9 @@ def get_setting_value_for_user_group_object(
     )
 
 
-def user_groups_in_realm_serialized(realm: Realm) -> list[UserGroupDict]:
+def user_groups_in_realm_serialized(
+    realm: Realm, *, allow_deactivated: bool
+) -> list[UserGroupDict]:
     """This function is used in do_events_register code path so this code
     should be performant.  We need to do 2 database queries because
     Django's ORM doesn't properly support the left join between
@@ -385,6 +490,9 @@ def user_groups_in_realm_serialized(realm: Realm) -> list[UserGroupDict]:
         "can_mention_group",
         "can_mention_group__named_user_group",
     ).filter(realm=realm)
+
+    if not allow_deactivated:
+        realm_groups = realm_groups.filter(deactivated=False)
 
     membership = UserGroupMembership.objects.filter(user_group__realm=realm).values_list(
         "user_group_id", "user_profile_id"
@@ -425,6 +533,7 @@ def user_groups_in_realm_serialized(realm: Realm) -> list[UserGroupDict]:
             can_mention_group=get_setting_value_for_user_group_object(
                 user_group.can_mention_group, group_members, group_subgroups
             ),
+            deactivated=user_group.deactivated,
         )
 
     for group_dict in group_dicts.values():
@@ -609,7 +718,7 @@ def bulk_create_system_user_groups(groups: list[dict[str, str]], realm: Realm) -
         user_group_ids = [id for (id,) in cursor.fetchall()]
 
     rows = [
-        SQL("({},{},{},{},{},{},{})").format(
+        SQL("({},{},{},{},{},{},{},{})").format(
             Literal(user_group_ids[idx]),
             Literal(realm.id),
             Literal(group["name"]),
@@ -617,12 +726,13 @@ def bulk_create_system_user_groups(groups: list[dict[str, str]], realm: Realm) -
             Literal(True),
             Literal(initial_group_setting_value),
             Literal(initial_group_setting_value),
+            Literal(False),
         )
         for idx, group in enumerate(groups)
     ]
     query = SQL(
         """
-        INSERT INTO zerver_namedusergroup (usergroup_ptr_id, realm_id, name, description, is_system_group, can_manage_group_id, can_mention_group_id)
+        INSERT INTO zerver_namedusergroup (usergroup_ptr_id, realm_id, name, description, is_system_group, can_manage_group_id, can_mention_group_id, deactivated)
         VALUES {rows}
         """
     ).format(rows=SQL(", ").join(rows))
