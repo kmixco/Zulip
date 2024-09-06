@@ -228,6 +228,22 @@ test("simple search", () => {
     assert.deepEqual(user_ids, [selma.user_id]);
 });
 
+test("deactivated users excluded from search", () => {
+    people._add_user(selma);
+    people.deactivate(selma);
+
+    let user_ids = buddy_data.get_filtered_and_sorted_user_ids();
+    assert.equal(user_ids.includes(selma.user_id), false);
+    user_ids = buddy_data.get_filtered_and_sorted_user_ids("selm");
+    assert.deepEqual(user_ids, []);
+    assert.ok(!buddy_data.matches_filter("selm", selma.user_id));
+
+    people.add_active_user(selma);
+    user_ids = buddy_data.get_filtered_and_sorted_user_ids("selm");
+    assert.deepEqual(user_ids, [selma.user_id]);
+    assert.ok(buddy_data.matches_filter("selm", selma.user_id));
+});
+
 test("muted users excluded from search", () => {
     people.add_active_user(selma);
     muted_users.add_muted_user(selma.user_id);
