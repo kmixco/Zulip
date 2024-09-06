@@ -55,7 +55,7 @@ function same_sender(a, b) {
     if (a === undefined || b === undefined) {
         return false;
     }
-    return util.same_sender(a.msg, b.msg);
+    return a.msg.sender_id === b.msg.sender_id;
 }
 
 function same_recipient(a, b) {
@@ -119,15 +119,15 @@ function analyze_edit_history(message, last_edit_timestr) {
 
 function get_group_display_date(message) {
     const time = new Date(message.timestamp * 1000);
-    const date_element = util.the(timerender.render_date(time));
+    const date_element = timerender.render_date(time);
 
     return date_element.outerHTML;
 }
 
-function update_group_date(group, message_container, prev) {
+function update_group_date(group, message, prev) {
     // Mark whether we should display a date marker because this
     // message has a different date than the previous one.
-    group.date_unchanged = same_day(message_container?.msg, prev?.msg);
+    group.date_unchanged = same_day(message, prev);
 }
 
 function clear_group_date(group) {
@@ -165,7 +165,7 @@ function get_message_date_divider_data(opts) {
 
     return {
         want_date_divider: true,
-        date_divider_html: util.the(timerender.render_date(curr_time)).outerHTML,
+        date_divider_html: timerender.render_date(curr_time).outerHTML,
     };
 }
 
@@ -174,26 +174,31 @@ function get_timestr(message) {
     return timerender.stringify_time(time);
 }
 
-function set_topic_edit_properties(group, message) {
-    group.always_visible_topic_edit = false;
-    group.on_hover_topic_edit = false;
+function get_topic_edit_properties(message) {
+    let always_visible_topic_edit = false;
+    let on_hover_topic_edit = false;
 
     const is_topic_editable = message_edit.is_topic_editable(message);
 
     // if a user who can edit a topic, can resolve it as well
-    group.user_can_resolve_topic = is_topic_editable;
+    const user_can_resolve_topic = is_topic_editable;
 
-    if (!is_topic_editable) {
-        return;
+    if (is_topic_editable) {
+        // Messages with no topics should always have an edit icon visible
+        // to encourage updating them. Admins can also edit any topic.
+        if (message.topic === compose_state.empty_topic_placeholder()) {
+            always_visible_topic_edit = true;
+        } else {
+            on_hover_topic_edit = true;
+        }
     }
 
-    // Messages with no topics should always have an edit icon visible
-    // to encourage updating them. Admins can also edit any topic.
-    if (message.topic === compose_state.empty_topic_placeholder()) {
-        group.always_visible_topic_edit = true;
-    } else {
-        group.on_hover_topic_edit = true;
-    }
+    return {
+        always_visible_topic_edit,
+        on_hover_topic_edit,
+        is_topic_editable,
+        user_can_resolve_topic,
+    };
 }
 
 function get_users_for_recipient_row(message) {
@@ -325,7 +330,7 @@ function populate_group_from_message_container(group, message_container) {
     group.display_recipient = message_container.msg.display_recipient;
     group.topic_links = message_container.msg.topic_links;
 
-    set_topic_edit_properties(group, message_container.msg);
+    Object.assign(group, get_topic_edit_properties(message_container.msg));
     group.date = get_group_display_date(message_container.msg);
 }
 
@@ -404,7 +409,7 @@ export class MessageListView {
         }
         if (last_edit_timestamp !== undefined) {
             const last_edit_time = new Date(last_edit_timestamp * 1000);
-            let date = util.the(timerender.render_date(last_edit_time)).textContent;
+            let date = timerender.render_date(last_edit_time).textContent;
             // If the date is today or yesterday, we don't want to show the date as capitalized.
             // Thus, we need to check if the date string contains a digit or not using regex,
             // since any other date except today/yesterday will contain a digit.
@@ -422,7 +427,7 @@ export class MessageListView {
         return undefined;
     }
 
-    _add_msg_edited_vars(message_container) {
+    _get_message_edited_vars(message) {
         // This function computes data on whether the message was edited
         // and in what ways, as well as where the "EDITED" or "MOVED"
         // label should be located, and adds it to the message_container
@@ -433,8 +438,8 @@ export class MessageListView {
         //   * `edited_in_left_col`      -- when label appears in left column.
         //   * `edited_alongside_sender` -- when label appears alongside sender info.
         //   * `edited_status_msg`       -- when label appears for a "/me" message.
-        const last_edit_timestr = this._get_msg_timestring(message_container.msg);
-        const edit_history_details = analyze_edit_history(message_container.msg, last_edit_timestr);
+        const last_edit_timestr = this._get_msg_timestring(message);
+        const edit_history_details = analyze_edit_history(message, last_edit_timestr);
 
         if (
             last_edit_timestr === undefined ||
@@ -445,25 +450,30 @@ export class MessageListView {
             // notice at all. (The message actions popover will still
             // display an edit history option, so you can see when it
             // was marked as resolved if you need to).
-            delete message_container.last_edit_timestr;
-            message_container.edited_in_left_col = false;
-            message_container.edited_alongside_sender = false;
-            message_container.edited_status_msg = false;
-            return;
+            return {
+                last_edit_timestr: undefined,
+                edited_in_left_col: false,
+                edited_alongside_sender: false,
+                edited_status_msg: false,
+            };
         }
 
-        message_container.last_edit_timestr = last_edit_timestr;
-        message_container.moved = edit_history_details.moved && !edit_history_details.edited;
-        message_container.modified = true;
+        return {
+            last_edit_timestr,
+            moved: edit_history_details.moved && !edit_history_details.edited,
+            modified: true,
+        };
     }
 
     is_current_message_list() {
         return this.list === message_lists.current;
     }
 
-    set_calculated_message_container_variables(message_container, is_revealed) {
-        message_container.timestr = get_timestr(message_container.msg);
-
+    get_calculated_message_container_variables(
+        message,
+        existing_include_sender,
+        is_revealed = false,
+    ) {
         /*
             If the message needs to be hidden because the sender was muted, we do
             a few things:
@@ -476,23 +486,23 @@ export class MessageListView {
             the sender.
         */
 
-        const is_hidden =
-            muted_users.is_user_muted(message_container.msg.sender_id) && !is_revealed;
+        const is_hidden = muted_users.is_user_muted(message.sender_id) && !is_revealed;
 
-        message_container.is_hidden = is_hidden;
+        let mention_classname;
+
         // Make sure the right thing happens if the message was edited to mention us.
-        if (!is_hidden && message_container.msg.mentioned) {
+        if (!is_hidden && message.mentioned) {
             // Currently the API does not differentiate between a group mention and
             // a user mention. For now, we parse the markdown to see if the message
             // mentions the user.
             let is_user_mention = false;
-            const $msg = $(message_container.msg.content);
+            const $msg = $(message.content);
             $msg.find(".user-mention:not(.silent)").each(function () {
                 const user_id = rendered_markdown.get_user_id_for_mention_button(this);
                 if (user_id === "*") {
                     return;
                 }
-                if (people.is_my_user_id(user_id)) {
+                if (user_id !== undefined && people.is_my_user_id(user_id)) {
                     is_user_mention = true;
                 }
             });
@@ -501,51 +511,57 @@ export class MessageListView {
             // group/wildcard mention, and color the message as a user mention. If the
             // message didn't include a user mention, then it was a usergroup/wildcard
             // mention (which is the only other option for `mentioned` being true).
-            if (message_container.msg.mentioned_me_directly && is_user_mention) {
+            if (message.mentioned_me_directly && is_user_mention) {
                 // Highlight messages having personal mentions only in DMs and subscribed streams.
                 if (
-                    message_container.msg.type === "private" ||
-                    stream_data.is_user_subscribed(
-                        message_container.msg.stream_id,
-                        people.my_current_user_id(),
-                    )
+                    message.type === "private" ||
+                    stream_data.is_user_subscribed(message.stream_id, people.my_current_user_id())
                 ) {
-                    message_container.mention_classname = "direct_mention";
+                    mention_classname = "direct_mention";
                 }
             } else {
-                message_container.mention_classname = "group_mention";
+                mention_classname = "group_mention";
             }
         } else {
             // If there are no mentions, the classname might need to be updated (i.e.
             // removed) to reflect this.
-            message_container.mention_classname = null;
+            mention_classname = null;
         }
-        message_container.include_sender = message_container.include_sender && !is_hidden;
+        let include_sender = existing_include_sender && !is_hidden;
         if (is_revealed) {
             // If the message is to be revealed, we show the sender anyways, because the
             // the first message in the group (which would hold the sender) can still be
             // hidden.
-            message_container.include_sender = true;
+            include_sender = true;
         }
 
-        message_container.sender_is_bot = people.sender_is_bot(message_container.msg);
-        message_container.sender_is_guest = people.sender_is_guest(message_container.msg);
-        message_container.should_add_guest_indicator_for_sender =
-            people.should_add_guest_user_indicator(message_container.msg.sender_id);
-
-        message_container.small_avatar_url = people.small_avatar_url(message_container.msg);
-        if (message_container.msg.stream_id) {
-            message_container.background_color = stream_data.get_color(
-                message_container.msg.stream_id,
-            );
-        }
-
-        Object.assign(
-            message_container,
-            this._maybe_get_me_message(message_container.is_hidden, message_container.msg),
+        const sender_is_bot = people.sender_is_bot(message);
+        const sender_is_guest = people.sender_is_guest(message);
+        const should_add_guest_indicator_for_sender = people.should_add_guest_user_indicator(
+            message.sender_id,
         );
-        // Once all other variables are updated
-        this._add_msg_edited_vars(message_container);
+
+        const small_avatar_url = people.small_avatar_url(message);
+        let background_color;
+        if (message.type === "stream") {
+            background_color = stream_data.get_color(message.stream_id);
+        }
+
+        return {
+            timestr: get_timestr(message),
+            // this is only relevant for streams, don't use it if it wasn't set
+            ...(background_color && {background_color}),
+            small_avatar_url,
+            sender_is_bot,
+            sender_is_guest,
+            should_add_guest_indicator_for_sender,
+            is_hidden,
+            // don't set this unless we found a new value for it.
+            ...(mention_classname !== undefined && {mention_classname}),
+            include_sender,
+            ...this._maybe_get_me_message(is_hidden, message),
+            ...this._get_message_edited_vars(message),
+        };
     }
 
     maybe_add_subscription_marker(group, last_msg_container, first_msg_container) {
@@ -630,7 +646,7 @@ export class MessageListView {
                 current_group = start_group();
                 add_message_container_to_group(message_container);
 
-                update_group_date(current_group, message_container, prev);
+                update_group_date(current_group, message_container.msg, prev?.msg);
                 message_container.want_date_divider = false;
                 message_container.date_divider_html = undefined;
 
@@ -663,7 +679,13 @@ export class MessageListView {
                 message_container.include_sender = false;
             }
 
-            this.set_calculated_message_container_variables(message_container);
+            Object.assign(
+                message_container,
+                this.get_calculated_message_container_variables(
+                    message_container.msg,
+                    message_container.include_sender,
+                ),
+            );
 
             prev = message_container;
         }
@@ -783,7 +805,7 @@ export class MessageListView {
                 )
             ) {
                 // The groups did not merge, so we need up update the date row for the old group
-                update_group_date(second_group, curr_msg_container, prev_msg_container);
+                update_group_date(second_group, curr_msg_container.msg, prev_msg_container?.msg);
                 // We could add an action to update the date row, but for now rerender the group.
                 message_actions.rerender_groups.push(second_group);
             }
@@ -800,7 +822,11 @@ export class MessageListView {
                 } else {
                     // If we just sent the first message on a new day
                     // in a narrow, make sure we render a date.
-                    update_group_date(second_group, curr_msg_container, prev_msg_container);
+                    update_group_date(
+                        second_group,
+                        curr_msg_container.msg,
+                        prev_msg_container?.msg,
+                    );
                 }
             }
             message_actions.append_groups = new_message_groups;
@@ -1430,7 +1456,14 @@ export class MessageListView {
         const $row = this.get_row(message_container.msg.id);
         const was_selected = this.list.selected_message() === message_container.msg;
 
-        this.set_calculated_message_container_variables(message_container, is_revealed);
+        Object.assign(
+            message_container,
+            this.get_calculated_message_container_variables(
+                message_container.msg,
+                message_container.include_sender,
+                is_revealed,
+            ),
+        );
 
         const $rendered_msg = $(this._get_message_template(message_container));
         if (message_content_edited) {
@@ -1832,7 +1865,7 @@ export class MessageListView {
         }
         this.sticky_recipient_message_id = message.id;
         const time = new Date(message.timestamp * 1000);
-        const rendered_date = util.the(timerender.render_date(time));
+        const rendered_date = timerender.render_date(time);
         dom_updates.html_updates.push({
             $element: $sticky_header.find(".recipient_row_date"),
             rendered_date,
