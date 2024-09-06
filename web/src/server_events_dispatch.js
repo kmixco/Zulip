@@ -706,6 +706,7 @@ export function dispatch_normal_event(event) {
                 break;
             }
 
+
             const user_preferences = [
                 "color_scheme",
                 "web_font_size_px",
@@ -736,6 +737,7 @@ export function dispatch_normal_event(event) {
             ];
 
             const original_home_view = user_settings.web_home_view;
+
             if (user_preferences.includes(event.property)) {
                 user_settings[event.property] = event.value;
             }
