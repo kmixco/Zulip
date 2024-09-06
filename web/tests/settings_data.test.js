@@ -237,6 +237,26 @@ test_realm_group_settings(
     settings_data.user_can_delete_any_message,
 );
 
+run_test("user_can_delete_any_message_for_guests", () => {
+    const user_id = 1;
+    const students = {
+        name: "Students",
+        id: 1,
+        members: new Set([user_id]),
+        is_system_group: true,
+        direct_subgroup_ids: new Set([]),
+    };
+    user_groups.initialize({realm_user_groups: [students]});
+
+    current_user.user_id = user_id;
+    realm.realm_can_delete_any_message_group = students.id;
+
+    assert.ok(settings_data.user_can_delete_any_message());
+
+    current_user.is_guest = true;
+    assert.ok(!settings_data.user_can_delete_any_message());
+});
+
 test_message_policy(
     "user_can_delete_own_message",
     "realm_delete_own_message_policy",
