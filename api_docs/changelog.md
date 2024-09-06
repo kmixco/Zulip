@@ -20,6 +20,17 @@ format used by the Zulip server that they are interacting with.
 
 ## Changes in Zulip 10.0
 
+**Feature level 286**
+
+* [`POST /register`](/api/register-queue):
+  A new `presence_history_limit_days` parameter can be given, instructing
+  the server to only fetch presence data more recent than the given
+  number of days ago.
+* [`POST /users/me/presence`](/api/update-presence):
+  A new `history_limit_days` parameter can be given, with the
+  same meaning as in the `presence_history_limit_days` parameter of
+  [`POST /register`](/api/register-queue) above.
+
 **Feature level 285**
 
 * [`PATCH /messages/{message_id}`](/api/update-message): Added
