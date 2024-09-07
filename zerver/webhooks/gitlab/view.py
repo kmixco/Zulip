@@ -16,6 +16,7 @@ from zerver.lib.webhooks.common import (
     validate_extract_webhook_http_header,
 )
 from zerver.lib.webhooks.git import (
+    CONTENT_MESSAGE_TEMPLATE,
     EMPTY_SHA,
     TOPIC_WITH_PR_OR_ISSUE_INFO_TEMPLATE,
     get_commits_comment_action_message,
@@ -342,6 +343,23 @@ def get_pipeline_event_body(payload: WildValue, include_title: bool) -> str:
     )
 
 
+def get_release_event_body(payload: WildValue, include_title: bool) -> str:
+    action = payload["action"].tame(check_string)
+    name = payload["name"].tame(check_string)
+
+    if action == "delete":
+        body = f"Release {name} was deleted"
+    else:
+        url = payload["url"].tame(check_string)
+        body = f"Release [{name}]({url}) was {action}d"
+
+        if "description" in payload and action != "delete":
+            description = payload["description"].tame(check_string)
+            body += ":" + CONTENT_MESSAGE_TEMPLATE.format(message=description)
+
+    return body
+
+
 def get_repo_name(payload: WildValue) -> str:
     if "project" in payload:
         return payload["project"]["name"].tame(check_string)
@@ -411,6 +429,7 @@ EVENT_FUNCTION_MAPPER: dict[str, EventFunction] = {
     "Job Hook": get_build_hook_event_body,
     "Build Hook": get_build_hook_event_body,
     "Pipeline Hook": get_pipeline_event_body,
+    "Release Hook": get_release_event_body,
 }
 
 ALL_EVENT_TYPES = list(EVENT_FUNCTION_MAPPER.keys())
