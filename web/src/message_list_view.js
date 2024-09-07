@@ -51,6 +51,16 @@ function same_day(earlier_msg, later_msg) {
     );
 }
 
+function same_year(earlier_msg, later_msg) {
+    if (earlier_msg === undefined || later_msg === undefined) {
+        return true;
+    }
+    return (
+        new Date(earlier_msg.timestamp * 1000).getFullYear() ===
+        new Date(later_msg.timestamp * 1000).getFullYear()
+    );
+}
+
 function same_sender(a, b) {
     if (a === undefined || b === undefined) {
         return false;
@@ -119,7 +129,7 @@ function analyze_edit_history(message, last_edit_timestr) {
 
 function get_group_display_date(message) {
     const time = new Date(message.timestamp * 1000);
-    const date_element = util.the(timerender.render_date(time));
+    const date_element = util.the(timerender.render_date(time, message.display_year));
 
     return date_element.outerHTML;
 }
@@ -128,6 +138,19 @@ function update_group_date(group, message_container, prev) {
     // Mark whether we should display a date marker because this
     // message has a different date than the previous one.
     group.date_unchanged = same_day(message_container?.msg, prev?.msg);
+}
+
+function update_message_year(curr_message, prev_message) {
+    if (prev_message === undefined) {
+        curr_message.display_year = false;
+        return;
+    }
+
+    if (same_year(curr_message, prev_message)) {
+        curr_message.display_year = false;
+    } else {
+        curr_message.display_year = true;
+    }
 }
 
 function clear_group_date(group) {
@@ -165,7 +188,8 @@ function get_message_date_divider_data(opts) {
 
     return {
         want_date_divider: true,
-        date_divider_html: util.the(timerender.render_date(curr_time)).outerHTML,
+        date_divider_html: util.the(timerender.render_date(curr_time, curr_message.display_year))
+            .outerHTML,
     };
 }
 
@@ -619,6 +643,7 @@ export class MessageListView {
                 prev.msg.historical === message_container.msg.historical
             ) {
                 add_message_container_to_group(message_container);
+                update_message_year(message_container.msg, prev?.msg);
                 const date_divider_data = get_message_date_divider_data({
                     prev_message: prev.msg,
                     curr_message: message_container.msg,
@@ -630,6 +655,7 @@ export class MessageListView {
                 current_group = start_group();
                 add_message_container_to_group(message_container);
 
+                update_message_year(message_container.msg, prev?.msg);
                 update_group_date(current_group, message_container, prev);
                 message_container.want_date_divider = false;
                 message_container.date_divider_html = undefined;
@@ -1832,7 +1858,7 @@ export class MessageListView {
         }
         this.sticky_recipient_message_id = message.id;
         const time = new Date(message.timestamp * 1000);
-        const rendered_date = util.the(timerender.render_date(time));
+        const rendered_date = util.the(timerender.render_date(time, message.display_year));
         dom_updates.html_updates.push({
             $element: $sticky_header.find(".recipient_row_date"),
             rendered_date,
