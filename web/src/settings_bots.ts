@@ -1,7 +1,5 @@
-import ClipboardJS from "clipboard";
 import $ from "jquery";
 import assert from "minimalistic-assert";
-import {z} from "zod";
 
 import render_add_new_bot_form from "../templates/settings/add_new_bot_form.hbs";
 import render_bot_avatar_row from "../templates/settings/bot_avatar_row.hbs";
@@ -10,22 +8,16 @@ import render_bot_settings_tip from "../templates/settings/bot_settings_tip.hbs"
 import * as avatar from "./avatar";
 import * as bot_data from "./bot_data";
 import * as channel from "./channel";
-import * as components from "./components";
-import {show_copied_confirmation} from "./copied_tooltip";
 import {csrf_token} from "./csrf";
 import * as dialog_widget from "./dialog_widget";
 import {$t, $t_html} from "./i18n";
-import * as integration_url_modal from "./integration_url_modal";
 import * as list_widget from "./list_widget";
 import {page_params} from "./page_params";
-import * as people from "./people";
 import * as settings_data from "./settings_data";
 import {current_user, realm} from "./state_data";
 import type {HTMLSelectOneElement} from "./types";
 import * as ui_report from "./ui_report";
 import type {UploadWidget} from "./upload_widget";
-import * as user_deactivation_ui from "./user_deactivation_ui";
-import * as user_profile from "./user_profile";
 
 const INCOMING_WEBHOOK_BOT_TYPE = 2;
 const OUTGOING_WEBHOOK_BOT_TYPE = "3";
@@ -94,61 +86,6 @@ export function render_bots(): void {
     list_widget.render_empty_list_message_if_needed($("#inactive_bots_list"));
 }
 
-export function generate_zuliprc_url(bot_id: number): string {
-    const bot = bot_data.get(bot_id);
-    assert(bot !== undefined);
-    const data = generate_zuliprc_content(bot);
-    return encode_zuliprc_as_url(data);
-}
-
-export function encode_zuliprc_as_url(zuliprc: string): string {
-    return "data:application/octet-stream;charset=utf-8," + encodeURIComponent(zuliprc);
-}
-
-export function generate_zuliprc_content(bot: bot_data.Bot): string {
-    let token;
-    // For outgoing webhooks, include the token in the zuliprc.
-    // It's needed for authenticating to the Botserver.
-    if (bot.bot_type === 3) {
-        const services = bot_data.get_services(bot.user_id);
-        assert(services !== undefined);
-        const service = services[0];
-        assert(service && "token" in service);
-        token = service.token;
-    }
-    return (
-        "[api]" +
-        "\nemail=" +
-        bot.email +
-        "\nkey=" +
-        bot.api_key +
-        "\nsite=" +
-        realm.realm_url +
-        (token === undefined ? "" : "\ntoken=" + token) +
-        // Some tools would not work in files without a trailing new line.
-        "\n"
-    );
-}
-
-export function generate_botserverrc_content(
-    email: string,
-    api_key: string,
-    token: string,
-): string {
-    return (
-        "[]" +
-        "\nemail=" +
-        email +
-        "\nkey=" +
-        api_key +
-        "\nsite=" +
-        realm.realm_url +
-        "\ntoken=" +
-        token +
-        "\n"
-    );
-}
-
 export const bot_creation_policy_values = {
     admins_only: {
         code: 3,
@@ -205,11 +142,11 @@ function update_add_bot_button(): void {
         $("#bot-settings .add-a-new-bot").show();
         $("#admin-bot-list .add-new-bots").show();
         $("#admin-bot-list .manage-your-bots").hide();
-        $(".org-settings-list li[data-section='bot-list-admin'] .locked").hide();
+        $(".org-settings-list li[data-section='bots'] .locked").hide();
     } else {
         $("#bot-settings .add-a-new-bot").hide();
         $("#admin-bot-list .add-new-bots").hide();
-        $(".org-settings-list li[data-section='bot-list-admin'] .locked").show();
+        $(".org-settings-list li[data-section='bots'] .locked").show();
 
         if (bot_data.get_all_bots_for_current_user().length > 0) {
             $("#admin-bot-list .manage-your-bots").show();
@@ -364,151 +301,7 @@ export function add_a_new_bot(): void {
 }
 
 export function set_up(): void {
-    $("#download_botserverrc").on("click", function () {
-        let content = "";
-
-        for (const bot of bot_data.get_all_bots_for_current_user()) {
-            if (bot.is_active && bot.bot_type === OUTGOING_WEBHOOK_BOT_TYPE_INT) {
-                const services = bot_data.get_services(bot.user_id);
-                assert(services !== undefined);
-                const service = services[0];
-                assert(service && "token" in service);
-                const bot_token = service.token;
-                content += generate_botserverrc_content(bot.email, bot.api_key, bot_token);
-            }
-        }
-
-        $(this).attr(
-            "href",
-            "data:application/octet-stream;charset=utf-8," + encodeURIComponent(content),
-        );
-    });
-
-    const toggler = components.toggle({
-        child_wants_focus: true,
-        values: [
-            {label: $t({defaultMessage: "Active bots"}), key: "active-bots"},
-            {label: $t({defaultMessage: "Inactive bots"}), key: "inactive-bots"},
-        ],
-        callback(_name, key) {
-            $(".bots_section").hide();
-            $(`[data-bot-settings-section="${CSS.escape(key)}"]`).show();
-        },
-    });
-
-    toggler.get().prependTo($("#bot-settings .tab-container"));
-    toggler.goto("active-bots");
-
     render_bots();
-
-    $("#active_bots_list").on("click", "button.deactivate_bot", function () {
-        const bot_id = Number.parseInt($(this).attr("data-user-id")!, 10);
-        const $row = $(this).closest("li");
-
-        function handle_confirm(): void {
-            const url = "/json/bots/" + encodeURIComponent(bot_id);
-            const opts = {
-                success_continuation() {
-                    $row.hide("slow", () => {
-                        $row.remove();
-                    });
-                },
-            };
-            dialog_widget.submit_api_request(channel.del, url, {}, opts);
-        }
-        user_deactivation_ui.confirm_bot_deactivation(bot_id, handle_confirm, true);
-    });
-
-    $("#inactive_bots_list").on("click", "button.reactivate_bot", function (e) {
-        const user_id = Number.parseInt($(this).attr("data-user-id")!, 10);
-        e.stopPropagation();
-        e.preventDefault();
-
-        function handle_confirm(): void {
-            void channel.post({
-                url: "/json/users/" + encodeURIComponent(user_id) + "/reactivate",
-                success() {
-                    dialog_widget.close();
-                },
-                error(xhr) {
-                    ui_report.error($t_html({defaultMessage: "Failed"}), xhr, $("#dialog_error"));
-                    dialog_widget.hide_dialog_spinner();
-                },
-            });
-        }
-
-        user_deactivation_ui.confirm_reactivation(user_id, handle_confirm, true);
-    });
-
-    $("#active_bots_list").on("click", "button.bot-card-regenerate-bot-api-key", function () {
-        const bot_id = Number.parseInt($(this).attr("data-user-id")!, 10);
-        const $row = $(this).closest("li");
-        void channel.post({
-            url: "/json/bots/" + encodeURIComponent(bot_id) + "/api_key/regenerate",
-            success(raw_data) {
-                const data = z
-                    .object({
-                        api_key: z.string(),
-                    })
-                    .parse(raw_data);
-                $row.find(".bot-card-api-key").find(".value").text(data.api_key);
-                $row.find(".bot-card-api-key-error").hide();
-            },
-            error(xhr) {
-                const parsed = z.object({msg: z.string()}).safeParse(xhr.responseJSON);
-                if (parsed.success && parsed.data.msg) {
-                    $row.find(".bot-card-api-key-error").text(parsed.data.msg).show();
-                }
-            },
-        });
-    });
-
-    $("#active_bots_list").on("click", "button.open_edit_bot_form", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const $li = $(e.currentTarget).closest("li");
-        const bot_id = Number.parseInt($li.find(".bot-card-info").attr("data-user-id")!, 10);
-        const bot = people.get_by_user_id(bot_id);
-        user_profile.show_user_profile(bot, "manage-profile-tab");
-    });
-
-    $("#active_bots_list").on("click", "a.download_bot_zuliprc", function () {
-        const $bot_info = $(this).closest(".bot-information-box").find(".bot-card-info");
-        const bot_id = Number.parseInt($bot_info.attr("data-user-id")!, 10);
-        $(this).attr("href", generate_zuliprc_url(bot_id));
-    });
-
-    $("#active_bots_list").on("click", "button.open_bots_subscribed_streams", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        const bot_id = Number.parseInt($(this).attr("data-user-id")!, 10);
-        const bot = people.get_by_user_id(bot_id);
-        user_profile.show_user_profile(bot, "user-profile-streams-tab");
-    });
-
-    $("#active_bots_list").on("click", "button.open-generate-integration-url-modal", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        const api_key = $(this).attr("data-api-key")!;
-        integration_url_modal.show_generate_integration_url_modal(api_key);
-    });
-
-    const clipboard = new ClipboardJS("#copy_zuliprc", {
-        text(trigger) {
-            const $bot_info = $(trigger).closest(".bot-information-box").find(".bot-card-info");
-            const bot_id = Number.parseInt($bot_info.attr("data-user-id")!, 10);
-            const bot = bot_data.get(bot_id);
-            assert(bot !== undefined);
-            const data = generate_zuliprc_content(bot);
-            return data;
-        },
-    });
-
-    // Show a tippy tooltip when the bot zuliprc is copied
-    clipboard.on("success", (e) => {
-        assert(e.trigger instanceof HTMLElement);
-        show_copied_confirmation(e.trigger);
-    });
 
     $("#bot-settings .add-a-new-bot").on("click", (e) => {
         e.preventDefault();
